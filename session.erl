@@ -1,9 +1,11 @@
 -module(session).
--export([start/1]).
+-export([start/3]).
 
-start(Port) ->
+start(Port, DataIP, DataPort) ->
 	{ok, LSock} = gen_tcp:listen(Port, [binary, {active, once}, {packet, line}, {reuseaddr, true}]),
-	Room = spawn(fun() -> room([]) end),
+	% assum que existe um servidor de dados em DataIP:DataPort
+	{ok, DataSock} = gen_tcp:connect(DataIP, DataPort, [binary]),
+	Room = spawn(fun() -> room([], DataSock) end),
 	spawn(fun() -> acceptor(LSock, Room) end),
 	ok.
 
@@ -13,17 +15,15 @@ acceptor(LSock, Room) ->
 	Room ! {enter, self()},
 	user(Sock, Room).
 
-room(Pids) ->
+room(Pids, DataSock) ->
 	receive
 		{enter, Pid} ->
-			io:format("user entered~n", []),
-			room([Pid | Pids]);
-		{line, Data} ->
-			io:format("received~p~n", [Data]),
-			room(Pids);
+			room([Pid | Pids], DataSock);
+		{line, {_, Data}} ->
+			handleRequest(Data, DataSock),
+			room(Pids, DataSock);
 		{leave, Pid} ->
-			io:format("user left~n", []),
-			room(Pids -- [Pid])
+			room(Pids -- [Pid], DataSock)
 	end.
 
 user(Sock, Room) ->
@@ -37,4 +37,24 @@ user(Sock, Room) ->
       			Room ! {leave, self()};
     		{tcp_error, _, _} ->
       			Room ! {leave, self()}
+	end.
+
+handleRequest(Data, DataSock) ->
+	Lines = string:split(Data, " ", all),
+	[H | _] = Lines,
+	case string:equal(H, "read") of
+		true -> 
+			io:format("READ~n", []),
+			gen_tcp:send(DataSock, Data); 		% fazer pedido de read
+		_    -> ok
+	end,
+	case string:equal(H, "write") of
+		true -> 
+			io:format("WRITE~n", []),
+			case length(Lines) of
+				% fazer pedido de read
+				3 -> gen_tcp:send(DataSock, Data); 		
+				_ -> ok
+			end;
+		_    -> ok
 	end.
