@@ -1,5 +1,6 @@
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,6 +17,8 @@ public class ClientHandler implements Runnable{
     public void run(){
         try{
             BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
+            PrintWriter out = new PrintWriter(client.getOutputStream(), true);
+
             String inputLine;
             while ((inputLine = in.readLine()) != null) {
                 String[] command = inputLine.split(" ");
@@ -28,8 +31,10 @@ public class ClientHandler implements Runnable{
                     
                     List<String> res = this.data.read(args);
                     for (int i = 0; i < args.size(); i++){
-                        System.out.println("{" + args.get(i) + " : " + res.get(i) + "}");
+                        out.write("{" + args.get(i) + " : " + res.get(i) + "}");
                     }
+                    out.write('\n');
+                    out.flush();
                 }
                 else if (command[0].equals("write")){
                     this.data.write(command[1], command[2]);
