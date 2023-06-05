@@ -1,7 +1,7 @@
 -module(orsets).
 
 %% API
--export([create/0, addElem/3, removeElem/2, merge/2, converteSetsParaListas/1]).
+-export([create/0, addElem/3, removeElem/2, contains/2, size/1, elements/1, merge/2, converteSetsParaListas/1]).
 -export_type([orset/0]).
 
 -type dotstore() :: map().
@@ -18,6 +18,15 @@ addElem(Elem, ReplicaID, {DotStore, CausalContext}) ->
 
 -spec removeElem(any(), orset()) -> orset().
 removeElem(Elem, {DotStore, CausalContext}) -> {maps:remove(Elem, DotStore), CausalContext}.
+
+-spec contains(any(), orset()) -> true | false.
+contains(Elem, {DotStore, _}) -> maps:is_key(Elem, DotStore).
+
+-spec size(orset()) -> integer().
+size({DotStore, _}) -> maps:size(DotStore).
+
+-spec elements(orset()) -> list().
+elements({DotStore, _}) -> maps:keys(DotStore).
 
 %Intersection of dot stores
 -spec intersect(dotstore(), dotstore()) -> dotstore().
