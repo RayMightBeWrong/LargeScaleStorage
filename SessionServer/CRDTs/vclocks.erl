@@ -37,9 +37,9 @@ compare(VClock1, VClock2) ->
                     Value2 = ValOrDefault(Key, VClock2),
                     case Acc of
                         eq when Value1 > Value2 -> gt;
-                        eq when Value2 > Value1 -> lt;
-                        gt when Value2 > Value1 -> cc;
+                        eq when Value1 < Value2 -> lt;
+                        gt when Value1 < Value2 -> cc;
                         lt when Value1 > Value2 -> cc;
-                        _ -> eq
+                        _ -> Acc
                     end
                 end, eq, V1Keys ++ V2Keys).

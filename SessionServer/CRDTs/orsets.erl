@@ -71,7 +71,7 @@ addDotsNotInCausalContext(DotStoreIn, CausalContext, DotStoreOut) ->
 
 -spec merge(orset(), orset()) -> orset().
 merge({DotStore1, CausalContext1}, {DotStore2, CausalContext2}) ->
-    case causalcontexts:is_equal(CausalContext1, CausalContext2) of
+    case causalcontexts:is_equal(CausalContext1, CausalContext2) andalso DotStore1 =:= DotStore2 of
         %If the causal contexts are equal, than they have the same view (strong convergence)
         true -> {DotStore1, CausalContext1};
         %If the causal contexts are not equal, than a merge needs to be performed
