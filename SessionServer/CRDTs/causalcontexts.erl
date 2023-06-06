@@ -1,7 +1,7 @@
 -module(causalcontexts).
 
 %% API
--export([create/0, contains/2, compare/2, nextDot/2, merge/2]).
+-export([create/0, contains/2, is_equal/2, nextDot/2, merge/2]).
 -export_type([causalcontext/0, dot/0]).
 
 -type causalcontext() :: vclocks:vclock().
@@ -12,8 +12,12 @@
 create() -> vclocks:create().
 
 %Compare the two causal contexts
--spec compare(causalcontext(), causalcontext()) -> vclocks:ord().
-compare(CausalContext1, CausalContext2) -> vclocks:compare(CausalContext1, CausalContext2).
+%-spec compare(causalcontext(), causalcontext()) -> vclocks:ord().
+%compare(CausalContext1, CausalContext2) -> vclocks:compare(CausalContext1, CausalContext2).
+
+%Returns a boolean indicating if the two causal contexts are equal
+-spec is_equal(causalcontext(), causalcontext()) -> vclocks:ord().
+is_equal(CausalContext1, CausalContext2) -> vclocks:compare(CausalContext1, CausalContext2) == eq.
 
 % Checks if causal context includes the dot.
 -spec contains(dot(), causalcontext()) -> true | false.

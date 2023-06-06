@@ -71,10 +71,16 @@ addDotsNotInCausalContext(DotStoreIn, CausalContext, DotStoreOut) ->
 
 -spec merge(orset(), orset()) -> orset().
 merge({DotStore1, CausalContext1}, {DotStore2, CausalContext2}) ->
-    IntersectionDS = intersect(DotStore1, DotStore2),
-    NewDS = addDotsNotInCausalContext(DotStore1, CausalContext2, IntersectionDS),
-    NewNewDS = addDotsNotInCausalContext(DotStore2, CausalContext1, NewDS),
-    {NewNewDS, causalcontexts:merge(CausalContext1, CausalContext2)}.
+    case causalcontexts:is_equal(CausalContext1, CausalContext2) of
+        %If the causal contexts are equal, than they have the same view (strong convergence)
+        true -> {DotStore1, CausalContext1};
+        %If the causal contexts are not equal, than a merge needs to be performed
+        false ->
+            IntersectionDS = intersect(DotStore1, DotStore2),
+            NewDS = addDotsNotInCausalContext(DotStore1, CausalContext2, IntersectionDS),
+            NewNewDS = addDotsNotInCausalContext(DotStore2, CausalContext1, NewDS),
+            {NewNewDS, causalcontexts:merge(CausalContext1, CausalContext2)}
+    end.
 
 converteSetsParaListas({DotStore, CausalContext}) ->
     NewDotStore = maps:fold(fun(Key, Set, Acc) ->

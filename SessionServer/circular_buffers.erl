@@ -121,7 +121,7 @@ sum(CB) ->
 	{NewCB, lists:sum(NewSlots)}.
 
 avg(CB) ->
-	{NewCB,Sum} = {_, NrOfSlots, Span, _, _} = sum(CB),
+	{NewCB,Sum} = {{_, NrOfSlots, Span, _, _},_} = sum(CB),
 	{NewCB, floor(Sum / (NrOfSlots * Span))}.
 
 % -------- DEBUG --------
