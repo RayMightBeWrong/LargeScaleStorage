@@ -41,57 +41,63 @@ elements(ORSet) -> whereis(?MODULE) ! {self(), ORSet, elements}, ok.
 % -------- Local Methods --------
 
 -spec loop(any(), pid(), orsets:orset(), orsets:orset()) -> any().
-loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited) ->
+loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited) -> loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited, erlang:system_time(milli_seconds)).
+
+-spec loop(any(), pid(), orsets:orset(), orsets:orset(), integer()) -> any().
+loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs) ->
+	% Calculates time until next broadcast. Broadcast should happen every 1 second.
+	TimeTilNextBcast = 1000 - (erlang:system_time(milli_seconds) - LastBcastTs),
+	if
+		%If the time until next broadcast is 0, or negative, then its time to broadcast.
+		TimeTilNextBcast =< 0 ->
+			broadcast_state(Socket, UsersLoggedIn, UsersLimited),
+			loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited, erlang:system_time(milli_seconds));
+		true -> ok
+	end,
 	receive
 		{merge, RcvdUsersLoggedIn, RcvdUsersLimited} ->
-			{_,CausalContext1} = UsersLoggedIn,
-			{_,CausalContext2} = RcvdUsersLoggedIn,
-			io:format("~n~nCausalContext1: ~p~n", [CausalContext1]),
-			io:format("CausalContext2: ~p~n", [CausalContext2]),
-			NewUsersLoggedIn = orsets:merge(UsersLoggedIn, RcvdUsersLoggedIn),
-			NewUsersLimited = orsets:merge(UsersLimited, RcvdUsersLimited),
 			loop(ReplicaID,
-				Socket,
-				NewUsersLoggedIn,
-				NewUsersLimited);
+				 Socket,
+				 orsets:merge(UsersLoggedIn, RcvdUsersLoggedIn),
+				 orsets:merge(UsersLimited, RcvdUsersLimited));
 
 		{ORSet, Op, Elem} when Op == add; Op == remove ->
-			local_add_remove_ops(ORSet, Op, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited);
+			local_add_remove_ops(ORSet, Op, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs);
 
 		{PID, ORSet, contains, Elem} ->
-			local_contains_ops(PID, ORSet, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited);
+			local_contains_ops(PID, ORSet, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs);
 
 		{PID, ORSet, Op} ->
-			local_size_elements_ops(PID, ORSet, Op, ReplicaID, Socket, UsersLoggedIn, UsersLimited)
+			local_size_elements_ops(PID, ORSet, Op, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs)
 
-		after 1000 -> % after 1 second, broadcast state to other replicas
+		after TimeTilNextBcast -> % after 1 second since the last broadcast, broadcast state to other replicas
 			broadcast_state(Socket, UsersLoggedIn, UsersLimited),
-			loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited)
+			loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited, erlang:system_time(milli_seconds))
 	end.
 
-local_add_remove_ops(ORSet, Op, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited) ->
+local_add_remove_ops(ORSet, Op, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs) ->
 	case Op of
 		add ->
 			case ORSet of
-				login -> loop(ReplicaID, Socket, orsets:addElem(Elem, ReplicaID, UsersLoggedIn), UsersLimited);
-				limited -> loop(ReplicaID, Socket, UsersLoggedIn, orsets:addElem(Elem, ReplicaID, UsersLimited))
+				login -> loop(ReplicaID, Socket, orsets:addElem(Elem, ReplicaID, UsersLoggedIn), UsersLimited, LastBcastTs);
+				limited -> loop(ReplicaID, Socket, UsersLoggedIn, orsets:addElem(Elem, ReplicaID, UsersLimited), LastBcastTs)
 			end;
 		remove ->
 			case ORSet of
-				login -> loop(ReplicaID, Socket, orsets:removeElem(Elem, UsersLoggedIn), UsersLimited);
-				limited -> loop(ReplicaID, Socket, UsersLoggedIn, orsets:removeElem(Elem, UsersLimited))
+				login -> loop(ReplicaID, Socket, orsets:removeElem(Elem, UsersLoggedIn), UsersLimited, LastBcastTs);
+				limited -> loop(ReplicaID, Socket, UsersLoggedIn, orsets:removeElem(Elem, UsersLimited), LastBcastTs)
 			end
 	end.
 
-local_contains_ops(PID, ORSet, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited) ->
+local_contains_ops(PID, ORSet, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs) ->
 	case ORSet of
 		login -> Res = orsets:contains(Elem, UsersLoggedIn);
 		limited -> Res = orsets:contains(Elem, UsersLimited)
 	end,
 	PID ! {ORSet, contains, Elem, Res},
-	loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited).
+	loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs).
 
-local_size_elements_ops(PID, ORSet, Op, ReplicaID, Socket, UsersLoggedIn, UsersLimited) ->
+local_size_elements_ops(PID, ORSet, Op, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs) ->
 	case ORSet of
 		login ->
 			case Op of
@@ -106,7 +112,7 @@ local_size_elements_ops(PID, ORSet, Op, ReplicaID, Socket, UsersLoggedIn, UsersL
 			end,
 			PID ! {ORSet, Op, Res}
 	end,
-	loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited).
+	loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs).
 
 % This is not actually a broadcast. The ORSets are sent to one of the brokers,
 % and the brokers broadcast using the PUB socket, to all the subscribers.
@@ -130,7 +136,6 @@ rcv_loop(Socket, StatePID) ->
 	{ok, [_, EncodedLoggedInState, EncodedLimitedState]} = chumak:recv_multipart(Socket),
 	LoggedInState = binary_to_term(EncodedLoggedInState), % decodes from binary the logged (in) users state
 	LimitedState = binary_to_term(EncodedLimitedState), % decodes from binary the limited users state
-	%io:format("Received \n", []),
 	StatePID ! {merge, LoggedInState, LimitedState}, % sends to actor responsible for performing the merge
 	rcv_loop(Socket, StatePID).
 
@@ -139,8 +144,8 @@ rcv_loop(Socket, StatePID) ->
 %Given a ZeroMQ socket, connects to an endpoint.
 connect(Socket, IP, Port) ->
 	case chumak:connect(Socket, tcp, IP, Port) of
-		{ok, _BindPid} -> ok;
-			%io:format("Binding OK with Pid: ~p\n", [Socket]);
+		{ok, _BindPid} ->
+			ok; %io:format("Binding OK with Pid: ~p\n", [Socket]);
 		{error, Reason} ->
 			io:format("Connection Failed for this reason: ~p\n", [Reason]);
 		X ->
