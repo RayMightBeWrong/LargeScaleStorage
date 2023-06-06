@@ -1,7 +1,7 @@
 -module(circular_buffers).
 
 %% API
--export([create/2, inc/1, sum/1]).
+-export([create/2, inc/1, sum/1, avg/1]).
 
 % - list containing the slots,
 % - the number of slots,
@@ -120,7 +120,9 @@ sum(CB) ->
 	NewCB = {NewSlots, _, _, _, _} = updateSlots(CB, false),
 	{NewCB, lists:sum(NewSlots)}.
 
-
+avg(CB) ->
+	{NewCB,Sum} = {_, NrOfSlots, Span, _, _} = sum(CB),
+	{NewCB, floor(Sum / (NrOfSlots * Span))}.
 
 % -------- DEBUG --------
 %createDebug(NrOfSlots, Interval, RefTimestamp) ->
