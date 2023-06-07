@@ -1,7 +1,7 @@
 -module(circular_buffers).
 
 %% API
--export([create/2, inc/1, sum/1, avg/1]).
+-export([create/2, inc/1, sum/1, inc_plus_sum/1]).
 
 % - list containing the slots,
 % - the number of slots,
@@ -120,9 +120,12 @@ sum(CB) ->
 	NewCB = {NewSlots, _, _, _, _} = updateSlots(CB, false),
 	{NewCB, lists:sum(NewSlots)}.
 
-avg(CB) ->
-	{NewCB,Sum} = {{_, NrOfSlots, Span, _, _},_} = sum(CB),
-	{NewCB, floor(Sum / (NrOfSlots * Span))}.
+%Increments the counter of the slot associated with the current system time.
+%Returns the updated circular buffer and the sum of all the counters.
+-spec inc_plus_sum(circular_buffer()) -> {circular_buffer(), integer()}.
+inc_plus_sum(CB) ->
+	NewCB = {NewSlots, _, _, _, _} = inc(CB),
+	{NewCB, lists:sum(NewSlots)}.
 
 % -------- DEBUG --------
 %createDebug(NrOfSlots, Interval, RefTimestamp) ->

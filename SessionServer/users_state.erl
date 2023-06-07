@@ -3,13 +3,18 @@
 %% API
 -export([start/3, add/2, remove/2, contains/2, size/1, elements/1]).
 
-% Arguments:
-% 	- ReplicaID
-%	- IP_Pairs_ROUTER -> list of pairs {IP, Port} of all brokers' endpoints which the socket matches to the ROUTER type
-%	- IP_Pairs_PUB -> list of pairs {IP, Port} of all brokers' endpoints which the socket matches to the PUB type
+%% @doc starts actor responsible for clients' states (if they are logged in and if they are throttled/limited.)
+%% @param ReplicaID is the unique identifier of the replica
+%% @param IP_Pairs_ROUTER -> list of pairs {IP, Port} of all brokers' endpoints which the socket matches to the ROUTER type
+%% @param IP_Pairs_PUB -> list of pairs {IP, Port} of all brokers' endpoints which the socket matches to the PUB type
+%% @returns PID
 start(ReplicaID, IP_Pairs_ROUTER, IP_Pairs_PUB) ->
 	application:ensure_started(chumak),
-	register(?MODULE, self()),
+	PID = spawn(fun() -> start_no_spawn(ReplicaID, IP_Pairs_ROUTER, IP_Pairs_PUB) end),
+	register(?MODULE, PID),
+	PID.
+
+start_no_spawn(ReplicaID, IP_Pairs_ROUTER, IP_Pairs_PUB) ->
 	spawn_link(fun() -> start_rcv(IP_Pairs_PUB) end),
 	{ok, Socket} = chumak:socket(dealer),
 	connect_list(Socket, IP_Pairs_ROUTER),
@@ -52,27 +57,28 @@ loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs) ->
 		TimeTilNextBcast =< 0 ->
 			broadcast_state(Socket, UsersLoggedIn, UsersLimited),
 			loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited, erlang:system_time(milli_seconds));
-		true -> ok
-	end,
-	receive
-		{merge, RcvdUsersLoggedIn, RcvdUsersLimited} ->
-			loop(ReplicaID,
-				 Socket,
-				 orsets:merge(UsersLoggedIn, RcvdUsersLoggedIn),
-				 orsets:merge(UsersLimited, RcvdUsersLimited));
 
-		{ORSet, Op, Elem} when Op == add; Op == remove ->
-			local_add_remove_ops(ORSet, Op, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs);
+		%Else there is time until the next broadcast, so the actor can wait for a message
+		true ->
+			receive
+				{merge, RcvdUsersLoggedIn, RcvdUsersLimited} ->
+					loop(ReplicaID, Socket,
+						 orsets:merge(UsersLoggedIn, RcvdUsersLoggedIn),
+						 orsets:merge(UsersLimited, RcvdUsersLimited));
 
-		{PID, ORSet, contains, Elem} ->
-			local_contains_ops(PID, ORSet, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs);
+				{ORSet, Op, Elem} when Op == add; Op == remove ->
+					local_add_remove_ops(ORSet, Op, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs);
 
-		{PID, ORSet, Op} ->
-			local_size_elements_ops(PID, ORSet, Op, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs)
+				{PID, ORSet, contains, Elem} ->
+					local_contains_ops(PID, ORSet, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs);
 
-		after TimeTilNextBcast -> % after 1 second since the last broadcast, broadcast state to other replicas
-			broadcast_state(Socket, UsersLoggedIn, UsersLimited),
-			loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited, erlang:system_time(milli_seconds))
+				{PID, ORSet, Op} ->
+					local_size_elements_ops(PID, ORSet, Op, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs)
+
+				after TimeTilNextBcast -> % after 1 second since the last broadcast, broadcast state to other replicas
+					broadcast_state(Socket, UsersLoggedIn, UsersLimited),
+					loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited, erlang:system_time(milli_seconds))
+			end
 	end.
 
 local_add_remove_ops(ORSet, Op, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs) ->
@@ -89,14 +95,19 @@ local_add_remove_ops(ORSet, Op, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLim
 			end
 	end.
 
+% Checks if an element is present in the specified set.
+% The response has the following form: {ORSet, contains, Elem, Response}
 local_contains_ops(PID, ORSet, Elem, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs) ->
 	case ORSet of
-		login -> Res = orsets:contains(Elem, UsersLoggedIn);
-		limited -> Res = orsets:contains(Elem, UsersLimited)
+		login -> Response = orsets:contains(Elem, UsersLoggedIn);
+		limited -> Response = orsets:contains(Elem, UsersLimited)
 	end,
-	PID ! {ORSet, contains, Elem, Res},
+	PID ! {ORSet, contains, Elem, Response},
 	loop(ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs).
 
+% Depending on the chosen operation, sends a response containing the size of the specified set, or the
+% a list with the elements of the specified set.
+% The response has the following form: {ORSet, Operation, Response}
 local_size_elements_ops(PID, ORSet, Op, ReplicaID, Socket, UsersLoggedIn, UsersLimited, LastBcastTs) ->
 	case ORSet of
 		login ->
