@@ -22,30 +22,7 @@ start(CSocket, LIMIT, BASE) ->
 %% Essentially receives messages and handles them.
 loop(ClientInfo = {_, Username, _}, LimInfo) ->
 	receive
-		{tcp, _, Data} ->
-			ToString = binary_to_list(Data),
-			NoNewLine = string:substr(ToString, 1, length(ToString) - 1),
-			%io:format("Data: '~p'~n", [NoNewLine]), %TODO - tirar print
-			Tokens = string:tokens(NoNewLine," "),
-			case Tokens of
-				["avg"] ->
-					{_, CircularBuffer, _, _} = LimInfo,
-					{CSocket, _, _} = ClientInfo,
-					{NewCB, Sum} = circular_buffers:sum(CircularBuffer),
-					io:format("CB: ~p | Sum: ~p~n", [NewCB, Sum]),
-					io:format("Avg: ~p~n", [floor(Sum / 60)]),
-					inet:setopts(CSocket, [{active, once}]),
-					loop(ClientInfo, LimInfo);
-				["login", Name] ->
-					%io:format("Login: '~p'~n", [Name]),
-					handle_request({login, Name}, ClientInfo, LimInfo);
-				["read", Key] ->
-					%io:format("Read: '~p'~n", [Key]),
-					handle_request({read, Key}, ClientInfo, LimInfo);
-				["write", Key, Value] ->
-					%io:format("Write: '~p' '~p'~n", [Key, Value]),
-					handle_request({write, Key, Value}, ClientInfo, LimInfo)
-			end;
+		{tcp, _, Msg} -> handle_client_message(ClientInfo, LimInfo, Msg);
 		{tcp_closed, _} -> io:format("Closed ~n"), logout_client(Username);
 		{tcp_error, _, _} -> io:format("Error ~n"), logout_client(Username);
 		free ->
@@ -53,6 +30,44 @@ loop(ClientInfo = {_, Username, _}, LimInfo) ->
 			{_, CircularBuffer, LIMIT, BASE} = LimInfo,
 			loop(ClientInfo, {LIMIT, CircularBuffer, LIMIT, BASE});
 		_ -> io:format("flushed~n") % Para debug, remover dps
+	end.
+
+%% Parses and handles client message.
+handle_client_message(ClientInfo = {CSocket, Username, LoggedIn}, LimInfo, Msg) ->
+	try
+		%converts to string
+		ToString = binary_to_list(Msg),
+		%removes new line at the end of the string
+		NoNewLine = string:substr(ToString, 1, length(ToString) - 1),
+		%io:format("Data: '~p'~n", [NoNewLine]), %TODO - tirar print
+		%Separates parts of the message by the delimiter
+		Tokens = string:tokens(NoNewLine," "),
+		case Tokens of
+			%TODO - remover (é só para testes)
+			["avg"] ->
+				{CurrentLimit, CircularBuffer, _, _} = LimInfo,
+				{CSocket, _, _} = ClientInfo,
+				{_NewCB, Sum} = circular_buffers:sum(CircularBuffer),
+				io:format("CB: ~p~n", [_NewCB]),
+				io:format("CurrentLimit: ~p~n", [CurrentLimit]),
+				io:format("Avg: ~p~n", [floor(Sum / 60)]),
+				inet:setopts(CSocket, [{active, once}]),
+				loop(ClientInfo, LimInfo);
+			["login", Name] when LoggedIn == false ->
+				%io:format("Login: '~p'~n", [Name]),
+				handle_request({login, Name}, ClientInfo, LimInfo);
+			["read", Key] when LoggedIn == true ->
+				%io:format("Read: '~p'~n", [Key]),
+				handle_request({read, Key}, ClientInfo, LimInfo);
+			["write", Key, Value] when LoggedIn == true ->
+				%io:format("Write: '~p' '~p'~n", [Key, Value]),
+				handle_request({write, Key, Value}, ClientInfo, LimInfo)
+		end
+	catch
+		_: _ ->
+			io:format("Bad message! Closing connection...~n"),
+			logout_client(Username),
+			gen_tcp:close(CSocket)
 	end.
 
 %% Only handles this request if the user is not logged in.
@@ -74,7 +89,9 @@ handle_request({login, Name}, {CSocket, _, LoggedIn}, {_, CircularBuffer, LIMIT,
 					receive
 						{limited, contains, Name, LimitedContains} ->
 							case LimitedContains of
-								true -> CurrentLimit = BASE;
+								true ->
+									CurrentLimit = BASE,
+									limiter:limit_client(Name, self());
 								false -> CurrentLimit = LIMIT
 							end,
 							loop({CSocket, Name, true}, {CurrentLimit, CircularBuffer, LIMIT, BASE})
@@ -83,7 +100,9 @@ handle_request({login, Name}, {CSocket, _, LoggedIn}, {_, CircularBuffer, LIMIT,
 				%If the user is already logged in, refuses the log in operation,
 				% and closes the socket.
 				true ->
-					gen_tcp:send(CSocket, {refused, "Already logged in."}),
+					ErrorMsg = "Error: " ++ Name ++ " already logged in.\n",
+					io:format(ErrorMsg),
+					gen_tcp:send(CSocket, list_to_binary(ErrorMsg)),
 					gen_tcp:close(CSocket)
 			end
 		% TODO - adicionar timeout aqui? Já seria para tolerancia a faltas, not necessary I think.
@@ -95,10 +114,10 @@ handle_request(Request, {CSocket,Username,_} = ClientInfo, {CurrentLimit, Circul
 		%TODO - fazer handle da request e enviar a resposta aqui
 		{read, _KeysList} ->
 			%io:format("Handling Read~n"),
-			gen_tcp:send(CSocket, <<"Ola\n">>),
+			gen_tcp:send(CSocket, <<"\n">>),
 			read;
 		{write, _Key, _Value} ->
-			gen_tcp:send(CSocket, <<"Ola\n">>),
+			gen_tcp:send(CSocket, <<"\n">>),
 			%io:format("Handling Write~n"),
 			write
 	end,

@@ -35,7 +35,8 @@ start_server_no_spawn(PortForClients, ServerID, IP_Pairs_ROUTER, IP_Pairs_PUB, L
 %% Acceptor loop
 acceptor(LSocket, UsersStatePID, LIMIT, BASE) ->
 	{ok, Socket} = gen_tcp:accept(LSocket),
-	spawn(fun() -> acceptor(LSocket, UsersStatePID, LIMIT, BASE) end),
+	PID = spawn(fun() -> acceptor(LSocket, UsersStatePID, LIMIT, BASE) end),
+	gen_tcp:controlling_process(LSocket, PID),
 	ssclients_responder:start(Socket, LIMIT, BASE).
 
 
@@ -56,7 +57,8 @@ issues_requests(PID, Socket, N) ->
 		{tcp_error, _, _} -> io:format("Request: TCP Error ~n")
 	end,
 	issues_requests(PID, Socket, N - 1) end),
-	gen_tcp:controlling_process(Socket, RequesterPID).
+	gen_tcp:controlling_process(Socket, RequesterPID),
+	ok.
 
 login_client(IP, Port, Name) ->
 	{ok, Socket} = gen_tcp:connect(IP, Port, [binary, {packet,line}, {active, true}]),
@@ -75,3 +77,4 @@ get_avg(Socket) -> gen_tcp:send(Socket, <<"avg\n">>), ok.
 % users_state:elements(login), timer:sleep(100), session_server:non_blocking_receive().
 % gen_tcp:send(Socket, <<"read 1\n">>).
 % gen_tcp:send(Socket, <<"write 1 2\n">>).
+% whereis(limiter) ! print.
