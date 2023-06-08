@@ -26,16 +26,17 @@ start_server(PortForClients, ServerID, IP_Pairs_ROUTER, IP_Pairs_PUB, LIMIT, BAS
 %% Starts session server. Starts acceptor actor and the actors that handle
 %% the CRDTs about the clients state (users logged in and limited users).
 start_server_no_spawn(PortForClients, ServerID, IP_Pairs_ROUTER, IP_Pairs_PUB, LIMIT, BASE) ->
-	UsersStatePID = users_state:start(ServerID, IP_Pairs_ROUTER, IP_Pairs_PUB),
+	users_state:start(ServerID, IP_Pairs_ROUTER, IP_Pairs_PUB),
 	limiter:start(),
+	lru_cache_shared:start(1000),
 	% {active, once} for control flow. Also helps in ensuring sequential behaviour from the client.
 	{ok, LSock} = gen_tcp:listen(PortForClients, [binary, {active, once}, {packet, line}, {reuseaddr, true}]),
-	acceptor(LSock, UsersStatePID, LIMIT, BASE).
+	acceptor(LSock, LIMIT, BASE).
 
 %% Acceptor loop
-acceptor(LSocket, UsersStatePID, LIMIT, BASE) ->
+acceptor(LSocket, LIMIT, BASE) ->
 	{ok, Socket} = gen_tcp:accept(LSocket),
-	PID = spawn(fun() -> acceptor(LSocket, UsersStatePID, LIMIT, BASE) end),
+	PID = spawn(fun() -> acceptor(LSocket, LIMIT, BASE) end),
 	gen_tcp:controlling_process(LSocket, PID),
 	ssclients_responder:start(Socket, LIMIT, BASE).
 
