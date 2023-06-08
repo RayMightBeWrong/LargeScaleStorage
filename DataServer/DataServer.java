@@ -13,7 +13,6 @@ public class DataServer{
     private ZMQ.Socket socket;
     private DataMap data;
     //private Map<Integer, Integer> clock;
-    private Reader reader;
 
     public DataServer(List<String> ports, String id){
         try{
@@ -27,7 +26,6 @@ public class DataServer{
 
             this.data = new DataMap();
             //this.clock = new HashMap<>();
-            this.reader = new Reader();
         }
         catch(Exception e){
             e.printStackTrace();
@@ -35,7 +33,6 @@ public class DataServer{
     }
 
     public DataMap getDataMap(){ return this.data; }
-    public Reader getReader(){ return this.reader; }
 
     public void run(){
         while(true){
@@ -66,7 +63,7 @@ public class DataServer{
                 throw new Exception("Key-value requested to be written is not a pair!");
             this.data.write(kv_pair[0], kv_pair[1]);
         }
-        
+
         else if (dsm.getType().equals("read")){
             String request = dsm.getMessage();
             String value = this.data.readOne(request);
