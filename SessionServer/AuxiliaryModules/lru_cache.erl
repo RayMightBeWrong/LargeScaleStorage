@@ -1,17 +1,23 @@
 -module(lru_cache).
 
 %% API
--export([create/1, put/3, get/2]).
+-export([create/1, put/3, get/2, get_all/1]).
 
 %% dll_least corresponds to the most recently used entry
 %% dll_most corresponds to the least recently used entry
--record(lru_cache, {size = 0, capacity = 0, map = #{}, order = gb_trees:empty()}).
+-record(lru_cache, {size = 0 :: integer(),
+					capacity = 0 :: integer(),
+					map = #{} :: map(),
+					order = gb_trees:empty() :: gb_trees:tree()}).
 
 %% @doc creates cache with the given capacity
 create(Capacity) when is_integer(Capacity), Capacity > 0 ->
 	#lru_cache{capacity = Capacity}.
 
 %% @doc Inserts Key-Value in Cache.
+%% @param Key
+%% @param Value
+%% @param Cache
 %% @returns updated cache
 put(Key, Value, Cache) ->
 	case maps:is_key(Key, Cache#lru_cache.map) of
@@ -20,6 +26,8 @@ put(Key, Value, Cache) ->
 	end.
 
 %% @doc gets the value of a given key
+%% @param Key
+%% @param Cache
 %% @returns a tuple containing the value and the updated cache.
 %% If the key does not exists, returns the atom 'badkey' if there
 %% is no entry with the given key.
@@ -40,6 +48,13 @@ get(Key, Cache) ->
 		false -> badkey
 	end.
 
+%% @doc gets all pairs Key-Value. Since all the pairs are returned,
+%% the cache is not changed.
+%% @param Cache
+%% @returns list of all Key-Value pairs
+get_all(Cache) ->
+	maps:fold(fun(Key, {_Ts, Value}, Acc) -> [{Key, Value} | Acc]  end, [], Cache#lru_cache.map).
+
 % -------- Auxiliary Functions --------
 
 %% @returns new timestamp that allows comparing which key is the most recent
@@ -48,6 +63,9 @@ new_timestamp() -> erlang:system_time().
 %% Inserts Key-Value in Cache.
 %% Does not check if Cache has sufficient capacity,
 %% and does not increment size of cache.
+%% @param Key
+%% @param Value
+%% @param Cache
 %% @returns updated cache
 insert_key_value(Key, Value, Cache) ->
 	% Generates new timestamp (must be higher than any
@@ -72,6 +90,9 @@ insert_key_value(Key, Value, Cache) ->
 %% If key already exists and:
 %% 		- the values match -> converts key to the most recent.
 %%		- the values do not match -> updates value, and sets key to most recent.
+%% @param Key
+%% @param Value
+%% @param Cache
 %% @returns updated cache
 put_key_exists(Key, Value, Cache) ->
 	% Gets the timestamp associated with the Key
@@ -84,6 +105,9 @@ put_key_exists(Key, Value, Cache) ->
 	insert_key_value(Key, Value, Cache#lru_cache{order = NewTree}).
 
 %% Inserts pair key-value in the cache, as the most recent entry.
+%% @param Key
+%% @param Value
+%% @param Cache
 %% @returns updated cache
 put_key_doesnt_exist(Key, Value, Cache) ->
 	%Checks if the cache is already full.
@@ -104,5 +128,5 @@ put_key_doesnt_exist(Key, Value, Cache) ->
 			% Increments size of cache
 			NewSize = Cache#lru_cache.size + 1,
 			% Then inserts the new Key-Value.
-			insert_key_value(Key, Value, Cache#{size = NewSize})
+			insert_key_value(Key, Value, Cache#lru_cache{size = NewSize})
 	end.
