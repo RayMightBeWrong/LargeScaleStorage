@@ -16,6 +16,7 @@ public class ClientHandler implements Runnable{
     }
 
     public void run(){
+        /* 
         try{
             BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
             PrintWriter out = new PrintWriter(client.getOutputStream(), true);
@@ -46,7 +47,7 @@ public class ClientHandler implements Runnable{
                     for (int i = 0; i < args.size(); i++){
                         String key = args.get(i);
                         int hash = key.hashCode();
-                        int closest = getClosest(hash);
+                        int closest = 0; //getClosest(hash);
                         if (closest == server.getIndex()){
                             String res = server.getDataMap().readOne(key);
                             boolean its_over = server.getReader().handleReadOk(clock, key, res);
@@ -63,7 +64,7 @@ public class ClientHandler implements Runnable{
                 }
                 else if (command[0].equals("write")){
                     int hash = command[1].hashCode();
-                    int closest = getClosest(hash);
+                    int closest = 0;//getClosest(hash);
                     if (closest == server.getIndex()){
                         server.getDataMap().write(command[1], command[2]);
                     }
@@ -78,9 +79,11 @@ public class ClientHandler implements Runnable{
         catch (Exception e){
             e.printStackTrace();
         }
+        */
     }
 
     public void serverMessageHandler(DataServerMessage dsm) throws Exception{
+        /*
         if (dsm.getType().equals("read")){
             String key = dsm.getMessage();
             String value = server.getDataMap().readOne(key);
@@ -105,9 +108,6 @@ public class ClientHandler implements Runnable{
             String key = content[0];
             String value = content[1];
 
-            System.out.println("key: " + key);
-            System.out.println("value: " + value);
-
             // TODO: add clock
             int clock = 0;
             boolean its_over = server.getReader().handleReadOk(clock, key, value);
@@ -117,36 +117,10 @@ public class ClientHandler implements Runnable{
                 answerClientRead(output, kv);
             }
         }
+         */
     }
 
-    private int getClosest(int hashcode){
-        int res = 0;
-        int res_diff = 0;
-        // if the key's hashcode is lesser than all of the servers' hashcodes
-        boolean less = true;
-
-        for (Map.Entry<Integer, Integer> entry: server.getServerHashs().entrySet()){
-            int diff = hashcode - entry.getValue();
-            
-            if (less && diff > 0){
-                less = false;
-                res = entry.getKey();
-                res_diff = diff;
-            }
-            // if less is true => res_diff < 0
-            // if diff > res_diff then it is closer to the key's hashcode in the chord 
-            else if (less && diff > res_diff){
-                res = entry.getKey();
-                res_diff = diff;
-            }
-            else if (less == false && diff >= 0 && diff < res_diff){
-                res = entry.getKey();
-                res_diff = diff;
-            }
-        }
-
-        return res;
-    }
+    
 
     public void answerClientRead(PrintWriter out, Map<String, String> kv){
         for (Map.Entry<String, String> entry: kv.entrySet())
@@ -155,6 +129,7 @@ public class ClientHandler implements Runnable{
         out.flush();
     }
 
+    /* 
     class QuickMessageSender implements Runnable{
         private int portToSend;
         private DataServerMessage dsm;
@@ -178,4 +153,5 @@ public class ClientHandler implements Runnable{
             }
         }
     }
+    */
 }
