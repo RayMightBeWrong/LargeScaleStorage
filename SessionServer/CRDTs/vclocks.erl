@@ -23,18 +23,10 @@ merge(VClock1, VClock2) -> gcounters:merge(VClock1, VClock2).
 %Compares vector clocks
 -spec compare(vclock(), vclock()) -> ord().
 compare(VClock1, VClock2) ->
-    ValOrDefault =
-        fun(Key, VClock) ->
-            case maps:is_key(Key, VClock) of
-                true -> maps:get(Key, VClock);
-                false -> 0
-            end
-        end,
-    V1Keys = maps:keys(VClock1),
-    V2Keys = maps:keys(VClock2),
+    AllKeys = lists_union:lists_union(maps:keys(VClock1), maps:keys(VClock2)),
     lists:foldl(fun(Key, Acc) ->
-                    Value1 = ValOrDefault(Key, VClock1),
-                    Value2 = ValOrDefault(Key, VClock2),
+                    Value1 = maps:get(Key, VClock1, 0),
+                    Value2 = maps:get(Key, VClock2, 0),
                     case Acc of
                         eq when Value1 > Value2 -> gt;
                         eq when Value1 < Value2 -> lt;
@@ -42,4 +34,4 @@ compare(VClock1, VClock2) ->
                         lt when Value1 > Value2 -> cc;
                         _ -> Acc
                     end
-                end, eq, V1Keys ++ V2Keys).
+                end, eq, AllKeys).
