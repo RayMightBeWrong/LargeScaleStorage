@@ -45,7 +45,10 @@ public class Broker {
     }
 
     public void handleMessage(String sender, String content) throws Exception {
-        if (content.equals("hello")){
+        if (content.equals("hello_session")){
+            // TODO: sync com outros proxies
+        }
+        else if (content.equals("hello")){
             acceptNewNode(sender.toString());
         }
         else{
@@ -66,8 +69,16 @@ public class Broker {
     }
 
     public void handleInnerMessage(String sender, DataServerMessage dsm){
-        if (dsm.getType().equals("read")){
+        if (dsm.getType().equals("read_ans")){
             DataServerMessage newMsg = new DataServerMessage(false, "", "read_ans", dsm.getMessage());
+            sendMessage(dsm.getFrom(), newMsg);
+        }
+        else if (dsm.getType().equals("write_ans")){
+            DataServerMessage newMsg = new DataServerMessage(false, "", "write_ans", dsm.getMessage());
+            sendMessage(dsm.getFrom(), newMsg);
+        }
+        else if (dsm.getType().equals("read_version_ans")){
+            DataServerMessage newMsg = new DataServerMessage(false, "", "read_version_ans", dsm.getMessage());
             sendMessage(dsm.getFrom(), newMsg);
         }
     }
@@ -78,7 +89,7 @@ public class Broker {
             if (kv_pair.length != 2)
                 throw new Exception("Key-value requested to be written is not a pair!");
             String key = kv_pair[0];
-            DataServerMessage newMsg = new DataServerMessage(true, "", "write", dsm.getMessage());
+            DataServerMessage newMsg = new DataServerMessage(true, sender, "write", dsm.getMessage());
 
             int keyHash = key.hashCode();
             String to = getClosest(keyHash);
@@ -94,6 +105,23 @@ public class Broker {
                 int keyHash = key.hashCode();
                 String to = getClosest(keyHash);
                 sendMessage(to, newMsg);  
+            }
+        }
+        else if (dsm.getType().equals("read_version")){
+            String request = dsm.getMessage();
+            String[] keys = request.split(";");
+
+            for (String key: keys){
+                String[] k_version = key.split(",");
+                if (k_version.length == 2){
+                    DataServerMessage newMsg = new DataServerMessage(true, sender, "read_version", key);
+
+                    int keyHash = key.hashCode();
+                    String to = getClosest(keyHash);
+                    sendMessage(to, newMsg);
+                }
+                else
+                    throw new Exception("Key-version requested is not a pair!");
             }
         }
     }
@@ -138,6 +166,8 @@ public class Broker {
         ZMsg newMsg = new ZMsg();
         newMsg.wrap(identity);
         newMsg.add(dsm.constructMessage());
+        System.out.println("sending to: " + to);
+        System.out.println("sending: " + dsm.constructMessage());
         newMsg.send(socket);
     }
 
