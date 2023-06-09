@@ -4,6 +4,20 @@
 -export([start/3]).
 
 % TODO - falta nas funcoes start, o socket de acesso aos servidores de dados
+%Client state record
+-record(client, {username = none :: any(), % User name
+				 logged_in = false :: boolean(), % Is it logged in?
+				 csocket = none :: pid()}). % Socket through which the communication with the client is made
+
+%Throttle state record
+-record(throttle, {curr_limit = 100 :: integer(), % Current limit of avg requests per second in the last minute
+				   circ_buffer = none :: circular_buffers:circular_buffer(), % circular buffer, to keep track of the avg
+				   limit = 100:: integer(), % before getting throttled, max limit of avg requests per second in the last minute
+				   base = 10 :: integer()}). % after getting throttled, max limit of avg requests per second in the last minute
+
+%Session state record
+-record(session, {context = none :: any(), % context of the session, to ensure causal consistency %TODO - mudar aqui para fazer create do context
+				  socket = none :: pid()}). % socket to communicate with data servers.
 
 %% @doc
 %% Initiates client's responder loop, by setting the username to 'none',
@@ -14,27 +28,43 @@
 %% requests per second in the last minute surpasses the LIMIT value, than the
 %% client becomes throttled(limited), and can only get to a number of requests that does
 %% not allow is to surpasse the average of requests per second in last minute of BASE.
-start(CSocket, LIMIT, BASE) ->
-	%format: loop({ClientSocket, Username, LoggedIn}, {CurrentLimit, CircularBuffer, LIMIT, BASE}).
-	loop({CSocket, none, false}, {LIMIT, create_circular_buffer(), LIMIT, BASE}).
+start(CSocket, LIMIT, BASE) -> %TODO - falta receber aqui o socket de comunicacao com os data servers
+	loop(#client{csocket = CSocket},
+		 #throttle{curr_limit = LIMIT, circ_buffer = create_circular_buffer(), limit = LIMIT, base = BASE},
+		 #session{}).
 
 %% main loop of the client's responder.
 %% Essentially receives messages and handles them.
-loop(ClientInfo = {_, Username, _}, LimInfo) ->
+%% @param ClientS - Client state
+%% @param ThrottleS - Throttle state
+%% @param SessionS - Session state
+loop(ClientS, ThrottleS, SessionS) ->
 	receive
-		{tcp, _, Msg} -> handle_client_message(ClientInfo, LimInfo, Msg);
-		{tcp_closed, _} -> io:format("Closed ~n"), logout_client(Username);
-		{tcp_error, _, _} -> io:format("Error ~n"), logout_client(Username);
-		free ->
-			% frees client, i.e., removes previously imposed limit
-			{_, CircularBuffer, LIMIT, BASE} = LimInfo,
-			loop(ClientInfo, {LIMIT, CircularBuffer, LIMIT, BASE});
-		_ -> io:format("flushed~n") % Para debug, remover dps
+		{tcp, _, Msg} -> handle_client_message(ClientS, ThrottleS, SessionS, Msg);
+		{tcp_closed, _} -> io:format("Closed ~n"), logout_client(ClientS#client.username);
+		{tcp_error, _, _} -> io:format("Error ~n"), logout_client(ClientS#client.username);
+		free -> handle_free_message(ClientS, ThrottleS, SessionS);
+		_ -> io:format("flushed~n") % flush unrequested messages
 	end.
 
+%% frees client, i.e., removes previously imposed limit
+%% on avg requests per second in last minute
+%% @param ClientS - Client state
+%% @param ThrottleS - Throttle state
+%% @param SessionS - Session state
+handle_free_message(ClientS, ThrottleS, SessionS) ->
+		loop(ClientS,
+			 ThrottleS#throttle{curr_limit = ThrottleS#throttle.limit},
+			 SessionS).
+
 %% Parses and handles client message.
-handle_client_message(ClientInfo = {CSocket, Username, LoggedIn}, LimInfo, Msg) ->
+%% @param ClientS - Client state
+%% @param ThrottleS - Throttle state
+%% @param SessionS - Session state
+%% @param Msg - Message from client
+handle_client_message(ClientS, ThrottleS, SessionS, Msg) ->
 	try
+		%TODO - verificar se isto está de acordo com o necessário para ler msgs do cliente do Ray
 		%converts to string
 		ToString = binary_to_list(Msg),
 		%removes new line at the end of the string
@@ -42,38 +72,43 @@ handle_client_message(ClientInfo = {CSocket, Username, LoggedIn}, LimInfo, Msg) 
 		%io:format("Data: '~p'~n", [NoNewLine]), %TODO - tirar print
 		%Separates parts of the message by the delimiter
 		Tokens = string:tokens(NoNewLine," "),
+		LoggedIn = ClientS#client.logged_in, % to allow checks with 'when'
 		case Tokens of
 			%TODO - remover (é só para testes)
-			["avg"] ->
-				{CurrentLimit, CircularBuffer, _, _} = LimInfo,
-				{CSocket, _, _} = ClientInfo,
-				{_NewCB, Sum} = circular_buffers:sum(CircularBuffer),
-				io:format("CB: ~p~n", [_NewCB]),
-				io:format("CurrentLimit: ~p~n", [CurrentLimit]),
-				io:format("Avg: ~p~n", [floor(Sum / 60)]),
-				inet:setopts(CSocket, [{active, once}]),
-				loop(ClientInfo, LimInfo);
+			%["avg"] ->
+			%	{NewCB, Sum} = circular_buffers:sum(ThrottleS#throttle.circ_buffer),
+			%	io:format("CB: ~p~n", [NewCB]),
+			%	io:format("CurrentLimit: ~p~n", [ThrottleS#throttle.curr_limit]),
+			%	io:format("Avg: ~p~n", [floor(Sum / 60)]),
+			%	inet:setopts(ClientS#client.csocket, [{active, once}]),
+			%	loop(ClientS, ThrottleS#throttle{circ_buffer = NewCB}, SessionS);
 			["login", Name] when LoggedIn == false ->
 				%io:format("Login: '~p'~n", [Name]),
-				handle_request({login, Name}, ClientInfo, LimInfo);
-			["read", Key] when LoggedIn == true ->
-				%io:format("Read: '~p'~n", [Key]),
-				handle_request({read, Key}, ClientInfo, LimInfo);
+				handle_request({login, Name}, ClientS, ThrottleS, SessionS);
+			["get" | Keys] when LoggedIn == true ->
+				%io:format("Get: '~p'~n", [Keys]),
+				handle_request({get, Keys}, ClientS, ThrottleS, SessionS);
 			["write", Key, Value] when LoggedIn == true ->
 				%io:format("Write: '~p' '~p'~n", [Key, Value]),
-				handle_request({write, Key, Value}, ClientInfo, LimInfo)
+				handle_request({write, Key, Value}, ClientS, ThrottleS, SessionS)
 		end
 	catch
+		%if there is an exception, close the client socket, and remove the client
+		% from the logged in clients.
 		_: _ ->
 			io:format("Bad message! Closing connection...~n"),
-			logout_client(Username),
-			gen_tcp:close(CSocket)
+			logout_client(ClientS#client.username),
+			gen_tcp:close(ClientS#client.csocket)
 	end.
 
-%% Only handles this request if the user is not logged in.
+%% Should only handle this request if the user is not logged in.
 %% If the user is already logged in, it shouldn't need to log in again.
-handle_request({login, Name}, {CSocket, _, LoggedIn}, {_, CircularBuffer, LIMIT, BASE}) when LoggedIn == false ->
-	io:format("User '~p' trying to log in!~n", [Name]),
+%% @param {login, Name} - login defines the type of request. Name is the variable to be used to perform log in.
+%% @param ClientS - Client state
+%% @param ThrottleS - Throttle state
+%% @param SessionS - Session state
+handle_request({login, Name}, ClientS, ThrottleS, SessionS) ->
+	io:format("User '~p' trying to log in!~n", [Name]), % TODO - remove print
 	% Asks the actor responsible for the users login/limited state, if
 	%  there is user logged in with the same username.
 	users_state:contains(login, Name),
@@ -83,18 +118,33 @@ handle_request({login, Name}, {CSocket, _, LoggedIn}, {_, CircularBuffer, LIMIT,
 				%If there isn't an user logged in with the same username (in any of the session servers),
 				% then the user can be logged in.
 				false ->
+					% adds client to set of users logged in
 					users_state:add(login, Name),
-					inet:setopts(CSocket, [{active, once}]), % allows client to send the next request
+					% allows client to send the next request
+					inet:setopts(ClientS#client.csocket, [{active, once}]),
+					% checks if user is throttled
 					users_state:contains(limited, Name),
 					receive
 						{limited, contains, Name, LimitedContains} ->
 							case LimitedContains of
+								% user was recently throttled
 								true ->
-									CurrentLimit = BASE,
-									limiter:limit_client(Name, self());
-								false -> CurrentLimit = LIMIT
-							end,
-							loop({CSocket, Name, true}, {CurrentLimit, CircularBuffer, LIMIT, BASE})
+									% informs session server's limiter. The limiter
+									% is responsible to free the throttled clients.
+									limiter:limit_client(Name, self()),
+									% Updates username and logged_in in client's state
+									% and throttles the client
+									loop(ClientS#client{username = Name, logged_in = true},
+										 ThrottleS#throttle{curr_limit = ThrottleS#throttle.base},
+										 SessionS);
+
+								%user is not throttled
+								false ->
+									% Updates username and logged_in in client's state
+									loop(ClientS#client{username = Name, logged_in = true},
+										 ThrottleS,
+										 SessionS)
+							end
 					end;
 
 				%If the user is already logged in, refuses the log in operation,
@@ -102,32 +152,36 @@ handle_request({login, Name}, {CSocket, _, LoggedIn}, {_, CircularBuffer, LIMIT,
 				true ->
 					ErrorMsg = "Error: " ++ Name ++ " already logged in.\n",
 					io:format(ErrorMsg),
-					gen_tcp:send(CSocket, list_to_binary(ErrorMsg)),
-					gen_tcp:close(CSocket)
+					gen_tcp:send(ClientS#client.csocket, list_to_binary(ErrorMsg)),
+					gen_tcp:close(ClientS#client.csocket)
 			end
 		% TODO - adicionar timeout aqui? Já seria para tolerancia a faltas, not necessary I think.
 	end;
 
 %% Handles users read/write requests
-handle_request(Request, {CSocket,Username,_} = ClientInfo, {CurrentLimit, CircularBuffer, LIMIT, BASE}) ->
+%% @param Request - Client's get or write request
+%% @param ClientS - Client state
+%% @param ThrottleS - Throttle state
+%% @param SessionS - Session state
+handle_request(Request, ClientS, ThrottleS, SessionS) ->
 	case Request of
 		%TODO - fazer handle da request e enviar a resposta aqui
-		{read, _KeysList} ->
+		{get, _Keys} ->
 			%io:format("Handling Read~n"),
-			gen_tcp:send(CSocket, <<"\n">>),
+			gen_tcp:send(ClientS#client.csocket, <<"\n">>), % response in binary
 			read;
 		{write, _Key, _Value} ->
-			gen_tcp:send(CSocket, <<"\n">>),
+			gen_tcp:send(ClientS#client.csocket, <<"\n">>),
 			%io:format("Handling Write~n"),
 			write
 	end,
 	% Increments number of requests, and gets the approximate number of requests in the last minute
-	{NewCB, LastMinSum} = circular_buffers:inc_plus_sum(CircularBuffer),
+	{NewCB, LastMinSum} = circular_buffers:inc_plus_sum(ThrottleS#throttle.circ_buffer),
 	% Waits for permission to perform the next request. Can also limit the client if it surpasses the LIMIT.
-	NewLimInfo = waitForPermToRequest(Username, LastMinSum, {CurrentLimit, NewCB, LIMIT, BASE}),
+	NewThrottleS = waitForPermToRequest(ClientS#client.username, LastMinSum, ThrottleS#throttle{circ_buffer = NewCB}),
 	% lets the client send the next request
-	inet:setopts(CSocket, [{active, once}]),
-	loop(ClientInfo, NewLimInfo).
+	inet:setopts(ClientS#client.csocket, [{active, once}]),
+	loop(ClientS, NewThrottleS, SessionS).
 
 
 % --------- Auxiliar Functions ---------
@@ -151,8 +205,15 @@ logout_client(Username) ->
 %% LastMinSum is the (approximate) number of requests issued in
 %% the last minute.
 %% Limits the client if it surpasses the LIMIT.
-waitForPermToRequest(Username, LastMinSum, LimInfo = {CurrentLimit, CircularBuffer, LIMIT, BASE}) ->
+%% @param Username - Client's username
+%% @param LastMinSum - Number of requests in the last minute
+%% @param ThrottleS - Throttle State
+waitForPermToRequest(Username, LastMinSum, ThrottleS) ->
 	LastMinAvg = floor(LastMinSum / 60), % Calculates average of requests per second in the last minute (approximate)
+	CurrentLimit = ThrottleS#throttle.curr_limit,
+	CircularBuffer = ThrottleS#throttle.circ_buffer,
+	LIMIT = ThrottleS#throttle.limit,
+	BASE = ThrottleS#throttle.base,
 	if
 		LastMinAvg >= CurrentLimit ->
 			case CurrentLimit of
@@ -161,11 +222,11 @@ waitForPermToRequest(Username, LastMinSum, LimInfo = {CurrentLimit, CircularBuff
 				% to issue a new request.
 				BASE ->
 					receive
-						free -> {LIMIT, CircularBuffer, LIMIT, BASE}
+						free -> ThrottleS#throttle{curr_limit = LIMIT}
 						% after 0.5 seconds checks if a new request is possible
 						after 500 ->
 							{NewCB, NewLastMinSum} = circular_buffers:sum(CircularBuffer),
-							waitForPermToRequest(Username, NewLastMinSum, {CurrentLimit, NewCB, LIMIT, BASE})
+							waitForPermToRequest(Username, NewLastMinSum, ThrottleS#throttle{circ_buffer = NewCB})
 					end;
 				%Else CurrentLimit == LIMIT and the client needs to be limited. Then it needs to wait for
 				% permission to issue a new request.
@@ -175,9 +236,12 @@ waitForPermToRequest(Username, LastMinSum, LimInfo = {CurrentLimit, CircularBuff
 					% Resets circular buffer to avoid the client being unable to issue any request.
 					% If the buffer is not reset, than the client would have to wait until the average
 					% invocations per second in the last minute to go under the BASE value.
-					waitForPermToRequest(Username, 0, {BASE, create_circular_buffer(), LIMIT, BASE})
+					waitForPermToRequest(Username, 0, ThrottleS#throttle{curr_limit = BASE, circ_buffer = create_circular_buffer()})
 			end;
-		true -> LimInfo
+
+		% Current limit was not surpassed with current request,
+		% so the permission to issue the next request is instantly granted
+		true -> ThrottleS
 	end.
 
 %% @returns circular buffer with 5 slots and an interval of 60 seconds. Each slot spans (60 / 5) = 12 seconds.

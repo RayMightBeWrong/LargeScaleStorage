@@ -2,6 +2,7 @@
 
 %% API
 -export([create/2, inc/1, sum/1, inc_plus_sum/1, inc/2, sum/2, inc_plus_sum/2, create/3]).
+-export_type([circular_buffer/0]).
 
 % - list containing the slots,
 % - the number of slots,

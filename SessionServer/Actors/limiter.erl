@@ -44,10 +44,25 @@ loop(LimitedList, TsFreeClient) ->
 				% that limited clients are freed fairly.
 				% And informs the actor responsible for users' states.
 				{limit, Username, PID} ->
-					users_state:add(limited, Username),
-					NewLimitedList = LimitedList ++ [{Username, PID}],
-					%io:format("Added ~p. List: ~p~n", [{Username,PID}, NewLimitedList]), %TODO - Remove
-					loop(NewLimitedList, TsFreeClient)
+					%checks if user is already present in own list
+					Contains = lists:keymember(Username, 1, LimitedList),
+					case Contains of
+						% does not contain user in own list, so it
+						% needs to be added to the set of throttled
+						% clients, and to limiter's own list
+						false ->
+							users_state:add(limited, Username),
+							NewLimitedList = LimitedList ++ [{Username, PID}],
+							%io:format("Added ~p. List: ~p~n", [{Username,PID}, NewLimitedList]), %TODO - Remove
+							loop(NewLimitedList, TsFreeClient);
+
+						% contains user in the list, so it is already set
+						% to be freed later.
+						% only needs to replace the tuple, to update PID
+						true ->
+							NewLimitedList = lists:keyreplace(Username, 1, LimitedList, {Username, PID}),
+							loop(NewLimitedList, TsFreeClient)
+					end
 				%; print -> %TODO - Remove
 				%	io:format("Timeout: ~p | List: ~p~n",[Timeout, LimitedList]),
 				%	loop(LimitedList, TsFreeClient)
