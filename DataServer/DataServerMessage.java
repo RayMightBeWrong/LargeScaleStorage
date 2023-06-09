@@ -1,67 +1,70 @@
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 public class DataServerMessage {
+    //private Map<Integer, Integer> clock;
+    private boolean inner;
     private String from;
-    private Map<Integer, Integer> clock;
     private String type;
     private String message;
 
-    public DataServerMessage(String from, String clockStr, String type, String message){
-        this.from = from.substring(5, from.length());
-        this.clock = parseClock(clockStr);
-        this.type = type.substring(5, type.length());
-        this.message = message.substring(8, message.length());
-    }
+    public DataServerMessage(){}
 
-    public DataServerMessage(String from, Map<Integer, Integer> clock, String type, String message){
+    public DataServerMessage(boolean inner, String from, String type, String message){
+        //this.clock = parseClock(clockStr);
+        this.inner = inner;
         this.from = from;
-        this.clock = clock;
         this.type = type;
         this.message = message;
     }
 
+    public DataServerMessage(String[] command){
+        if (command.length == 4){
+            if (command[0].equals("INNER")){
+                this.inner = true;
+            }
+            else if (command[0].equals("OUTER"))
+                this.inner = false;
+
+            this.from = command[1];
+            this.type = command[2];
+            this.message = command[3];
+        }
+        else{
+            this.message = null;
+        }
+    }
+
+    //public Map<Integer, Integer> getClock(){ return this.clock; }
+    public boolean getInner(){ return this.inner; }
     public String getFrom(){ return this.from; }
-    public Map<Integer, Integer> getClock(){ return this.clock; }
     public String getType(){ return this.type; }
     public String getMessage(){ return this.message; }
 
-    public String constructMessage(){
-        StringBuilder sb = new StringBuilder("SERVER_MSG\n");
+    public void setInner(boolean inner){ this.inner = inner; }
+    public void setFrom(String from){ this.from = from; }
+    public void setType(String type){ this.type = type; }
+    public void setMessage(String msg){ this.message = msg; }
 
-        sb.append("from:" + from + "\n");
-        sb.append("clock:{");
-        for (Map.Entry<Integer,Integer> entry: clock.entrySet()){
-            sb.append("(" + entry.getKey() + "," + entry.getValue() + ")");
-        }
-        sb.append("}\n");
-        sb.append("type:" + type + "\n");
-        sb.append("message:" + message + "\n");
+
+    // INNER!read!1
+    public String constructMessage(){
+        StringBuilder sb;
+        if (inner)
+            sb = new StringBuilder("INNER!");
+        else
+            sb = new StringBuilder("OUTER!");
+
+        //sb.append("clock:{");
+        //for (Map.Entry<Integer,Integer> entry: clock.entrySet()){
+        //    sb.append("(" + entry.getKey() + "," + entry.getValue() + ")");
+        //}
+        //sb.append("}\n");
+        sb.append(from + "!");
+        sb.append(type + "!");
+        sb.append(message);
         
         return sb.toString();
     }
 
-    public DataServerMessage parseMessage(String str){
-        String lines[] = str.split("\n");
-        String from = lines[1];
-        String clockStr = lines[2];
-        String type = lines[3];
-        String message = lines[4];
-
-        return parseMessage(from, clockStr, type, message);
-    }
-
-    public DataServerMessage parseMessage(String from, String clockStr, String type, String message){
-        from = from.substring(5, from.length());
-        Map<Integer, Integer> clock = parseClock(clockStr);
-        type = type.substring(5, type.length());
-        message = message.substring(8, message.length());
-
-        return new DataServerMessage(from, clock, type, message);
-    }
-
+    /* 
     private Map<Integer, Integer> parseClock(String str){
         List<int[]> indexes = new ArrayList<>();
         String clockStr = str.substring(7, str.length()-1);
@@ -87,4 +90,5 @@ public class DataServerMessage {
 
         return clock;
     }
+    */
 }

@@ -16,7 +16,6 @@ public class DataMap {
     public String readOne(String key) throws Exception{
         try{
             String res = "";
-            // TODO: parar de usar locks
             this.lock.lock();
             int hash = key.hashCode();
             if (this.data.containsKey(hash))
@@ -32,7 +31,6 @@ public class DataMap {
     public List<String> read(List<String> args) throws Exception{
         try{
             List<String> res = new ArrayList<>();
-            // TODO: parar de usar locks
             this.lock.lock();
 
             for (int i = 0; i < args.size(); i++){
@@ -53,7 +51,6 @@ public class DataMap {
 
     public void write(String key, String value) throws Exception{
         try{
-            // TODO: parar de usar locks
             this.lock.lock();
             int hash = key.hashCode();
             this.data.put(hash, value);
