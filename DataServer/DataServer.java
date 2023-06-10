@@ -61,14 +61,26 @@ public class DataServer{
             String[] kv_pair = request.split(",");
             if (kv_pair.length != 2)
                 throw new Exception("Key-value requested to be written is not a pair!");
-            this.data.write(kv_pair[0], kv_pair[1]);
+            int new_version = this.data.write(kv_pair[0], kv_pair[1]);
+
+            DataServerMessage newMsg = new DataServerMessage(true, dsm.getFrom(), "write_ans", String.valueOf(new_version));
+            this.socket.send(newMsg.constructMessage());
         }
 
         else if (dsm.getType().equals("read")){
             String request = dsm.getMessage();
             String value = this.data.readOne(request);
 
-            DataServerMessage newMsg = new DataServerMessage(true, dsm.getFrom(), "read", value);
+            DataServerMessage newMsg = new DataServerMessage(true, dsm.getFrom(), "read_ans", value);
+            this.socket.send(newMsg.constructMessage());
+        }
+
+        else if (dsm.getType().equals("read_version")){
+            String request = dsm.getMessage();
+            String[] k_version = request.split(",");
+            String value = this.data.readVersion(k_version[0], k_version[1]);
+
+            DataServerMessage newMsg = new DataServerMessage(true, dsm.getFrom(), "read_version_ans", value);
             this.socket.send(newMsg.constructMessage());
         }
     }
