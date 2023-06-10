@@ -1,32 +1,38 @@
 -module(session_server).
 
 %% API
--export([start_server/4, start_server/6, issues_requests/3, non_blocking_receive/0, login_client/3, get_avg/1]).
+-export([start_server/5, start_server/7, issues_requests/3, non_blocking_receive/0, login_client/3, get_avg/1]).
 
 %% @doc
 %% Creates actor to start server to allow the function to return.
 %% Arguments:
-%% 	- PortForClients -> Port used to bind the TCP socket that will attend clients
-%% 	- ServerID -> Server Identifier
-%%	- IP_Pairs_ROUTER -> list of pairs {IP, Port} of all brokers' endpoints which the socket matches to the ROUTER type
-%%	- IP_Pairs_PUB -> list of pairs {IP, Port} of all brokers' endpoints which the socket matches to the PUB type
-start_server(PortForClients, ServerID, IP_Pairs_ROUTER, IP_Pairs_PUB) ->
-	spawn(fun() -> start_server_no_spawn(PortForClients, ServerID, IP_Pairs_ROUTER, IP_Pairs_PUB, 100, 10) end),
+%% @param PortForClients -> Port used to bind the TCP socket that will attend clients
+%% @param ServerID -> Server Identifier
+%% @param SessionBrokersROUTERs -> list of pairs {IP, Port} of all session brokers' endpoints which the socket matches to the ROUTER type
+%% @param SessionBrokersPUBs -> list of pairs {IP, Port} of all session brokers' endpoints which the socket matches to the PUB type
+%% @param DataBrokers -> list of pairs {IP, Port} of all data brokers' endpoints which the socket matches to the ROUTER type
+start_server(PortForClients, ServerID, SessionBrokersROUTERs, SessionBrokersPUBs, DataBrokers) ->
+	spawn(fun() -> start_server_no_spawn(PortForClients, ServerID, SessionBrokersROUTERs, SessionBrokersPUBs, DataBrokers, 100, 10) end),
 	ok.
 
 %% @doc
 %% Creates actor to start server to allow the function to return.
-%% Additional Arguments:
-%%	- LIMIT
-%% 	- BASE
-start_server(PortForClients, ServerID, IP_Pairs_ROUTER, IP_Pairs_PUB, LIMIT, BASE) ->
-	spawn(fun() -> start_server_no_spawn(PortForClients, ServerID, IP_Pairs_ROUTER, IP_Pairs_PUB, LIMIT, BASE) end),
+%% @param PortForClients -> Port used to bind the TCP socket that will attend clients
+%% @param ServerID -> Server Identifier
+%% @param SessionBrokersROUTERs -> list of pairs {IP, Port} of all session brokers' endpoints which the socket matches to the ROUTER type
+%% @param SessionBrokersPUBs -> list of pairs {IP, Port} of all session brokers' endpoints which the socket matches to the PUB type
+%% @param DataBrokers -> list of pairs {IP, Port} of all data brokers' endpoints which the socket matches to the ROUTER type
+%% @param LIMIT -> Maximum value of average requests per second in the last minute before the client gets throttled.
+%% @param BASE -> Maximum value of average requests per second in the last minute after the client gets throttled.
+start_server(PortForClients, ServerID, SessionBrokersROUTERs, SessionBrokersPUBs, DataBrokers, LIMIT, BASE) ->
+	spawn(fun() -> start_server_no_spawn(PortForClients, ServerID, SessionBrokersROUTERs, SessionBrokersPUBs, DataBrokers, LIMIT, BASE) end),
 	ok.
 
 %% Starts session server. Starts acceptor actor and the actors that handle
 %% the CRDTs about the clients state (users logged in and limited users).
-start_server_no_spawn(PortForClients, ServerID, IP_Pairs_ROUTER, IP_Pairs_PUB, LIMIT, BASE) ->
-	users_state:start(ServerID, IP_Pairs_ROUTER, IP_Pairs_PUB),
+start_server_no_spawn(PortForClients, ServerID, SessionBrokersROUTERs, SessionBrokersPUBs, DataBrokers, LIMIT, BASE) ->
+	data_gateway:start(ServerID, DataBrokers),
+	users_state:start(ServerID, SessionBrokersROUTERs, SessionBrokersPUBs),
 	limiter:start(),
 	lru_cache_shared:start(1000),
 	% {active, once} for control flow. Also helps in ensuring sequential behaviour from the client.
@@ -70,7 +76,7 @@ login_client(IP, Port, Name) ->
 get_avg(Socket) -> gen_tcp:send(Socket, <<"avg\n">>), ok.
 
 
-% P = session_server:start_server(12345, "R1", [{"localhost",5555}], [{"localhost",5556}]).
+% session_server:start_server(12345, "R1", [{"localhost",5555}], [{"localhost",5556}], [{"localhost",5557}]).
 % Socket = session_server:login_client("localhost", 12345, "Alex").
 % session_server:get_avg(Socket).
 % session_server:issues_requests(self(), Socket, 100 * 62).

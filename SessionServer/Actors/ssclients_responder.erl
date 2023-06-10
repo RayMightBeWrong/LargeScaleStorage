@@ -3,7 +3,6 @@
 %% API
 -export([start/3]).
 
-% TODO - falta nas funcoes start, o socket de acesso aos servidores de dados
 %Client state record
 -record(client, {username = none :: any(), % User name
 				 logged_in = false :: boolean(), % Is it logged in?
@@ -16,8 +15,7 @@
 				   base = 10 :: integer()}). % after getting throttled, max limit of avg requests per second in the last minute
 
 %Session state record
--record(session, {context = none :: any(), % context of the session, to ensure causal consistency %TODO - mudar aqui para fazer create do context
-				  socket = none :: pid()}). % socket to communicate with data servers.
+-record(session, {context = data_interface:create() :: any()}). % context of the session, to ensure causal consistency
 
 %% @doc
 %% Initiates client's responder loop, by setting the username to 'none',
@@ -28,7 +26,10 @@
 %% requests per second in the last minute surpasses the LIMIT value, than the
 %% client becomes throttled(limited), and can only get to a number of requests that does
 %% not allow is to surpasse the average of requests per second in last minute of BASE.
-start(CSocket, LIMIT, BASE) -> %TODO - falta receber aqui o socket de comunicacao com os data servers
+%% @param CSocket -> TCP socket to communicate with the client
+%% @param LIMIT -> Maximum value of average requests per second in the last minute before the client gets throttled.
+%% @param BASE -> Maximum value of average requests per second in the last minute after the client gets throttled.
+start(CSocket, LIMIT, BASE) ->
 	loop(#client{csocket = CSocket},
 		 #throttle{curr_limit = LIMIT, circ_buffer = create_circular_buffer(), limit = LIMIT, base = BASE},
 		 #session{}).
@@ -85,9 +86,9 @@ handle_client_message(ClientS, ThrottleS, SessionS, Msg) ->
 			["login", Name] when LoggedIn == false ->
 				%io:format("Login: '~p'~n", [Name]),
 				handle_request({login, Name}, ClientS, ThrottleS, SessionS);
-			["get" | Keys] when LoggedIn == true ->
+			["read" | Keys] when LoggedIn == true ->
 				%io:format("Get: '~p'~n", [Keys]),
-				handle_request({get, Keys}, ClientS, ThrottleS, SessionS);
+				handle_request({read, Keys}, ClientS, ThrottleS, SessionS);
 			["write", Key, Value] when LoggedIn == true ->
 				%io:format("Write: '~p' '~p'~n", [Key, Value]),
 				handle_request({write, Key, Value}, ClientS, ThrottleS, SessionS)
@@ -159,21 +160,23 @@ handle_request({login, Name}, ClientS, ThrottleS, SessionS) ->
 	end;
 
 %% Handles users read/write requests
-%% @param Request - Client's get or write request
+%% @param Request - Client's read or write request
 %% @param ClientS - Client state
 %% @param ThrottleS - Throttle state
 %% @param SessionS - Session state
 handle_request(Request, ClientS, ThrottleS, SessionS) ->
 	case Request of
 		%TODO - fazer handle da request e enviar a resposta aqui
-		{get, _Keys} ->
-			%io:format("Handling Read~n"),
-			gen_tcp:send(ClientS#client.csocket, <<"\n">>), % response in binary
-			read;
-		{write, _Key, _Value} ->
-			gen_tcp:send(ClientS#client.csocket, <<"\n">>),
-			%io:format("Handling Write~n"),
-			write
+		{read, Keys} ->
+			io:format("Handling Read~n"), %TODO - remover print
+			{NewCtx, Key_Value_Pairs} = data_interface:read(Keys, SessionS#session.context),
+			ToBinary = term_to_binary(list_to_string(Key_Value_Pairs)),
+			io:format("Resp: '~p'~n", [Key_Value_Pairs]),
+			gen_tcp:send(ClientS#client.csocket, <<ToBinary/binary, <<"\n">>/binary>>);
+		{write, Key, Value} ->
+			io:format("Handling Write~n"), %TODO - remover print
+			NewCtx = data_interface:put(Key, Value, SessionS#session.context),
+			gen_tcp:send(ClientS#client.csocket, <<"\n">>)
 	end,
 	% Increments number of requests, and gets the approximate number of requests in the last minute
 	{NewCB, LastMinSum} = circular_buffers:inc_plus_sum(ThrottleS#throttle.circ_buffer),
@@ -181,10 +184,18 @@ handle_request(Request, ClientS, ThrottleS, SessionS) ->
 	NewThrottleS = waitForPermToRequest(ClientS#client.username, LastMinSum, ThrottleS#throttle{circ_buffer = NewCB}),
 	% lets the client send the next request
 	inet:setopts(ClientS#client.csocket, [{active, once}]),
-	loop(ClientS, NewThrottleS, SessionS).
+	loop(ClientS, NewThrottleS, SessionS#session{context = NewCtx}).
 
 
 % --------- Auxiliar Functions ---------
+
+%% Converts list of string tuples to string.
+%% @param list of string tuples.
+%% @returns list of string tuples in string format
+list_to_string([]) -> "";
+list_to_string([{Fst,Snd} | T]) ->
+	lists:foldl(fun({Fst1, Snd1}, Acc) -> Acc ++ ";" ++ Fst1 ++ ":" ++ Snd1 end, Fst ++ ":" ++ Snd, T).
+
 
 %% Sends a message to the actor responsible for the users login/limited state, to
 %%  inform the user is no longer logged in.

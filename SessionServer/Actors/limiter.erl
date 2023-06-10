@@ -74,6 +74,7 @@ loop(LimitedList, TsFreeClient) ->
 %% Frees the first client in the list (if the list isn't empty).
 %% Informs the actor responsible for the clients' states that the
 %% client should be freed.
+%% @param LimitedList -> List that contains the pairs of Username and PID
 free_next_client([{Username, PID} | TailLimitedList]) ->
 	users_state:remove(limited, Username),
 	PID ! free, % Sends, to the actor responsible for talking to the client, a message saying that the client is free

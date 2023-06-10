@@ -17,7 +17,7 @@ start(ReplicaID, IP_Pairs_ROUTER, IP_Pairs_PUB) ->
 start_no_spawn(ReplicaID, IP_Pairs_ROUTER, IP_Pairs_PUB) ->
 	spawn_link(fun() -> start_rcv(IP_Pairs_PUB) end),
 	{ok, Socket} = chumak:socket(dealer),
-	connect_list(Socket, IP_Pairs_ROUTER),
+	zeromq_connect:connect_list(Socket, IP_Pairs_ROUTER),
 	loop(ReplicaID, Socket, orsets:create(), orsets:create()).
 
 % -------- API Methods --------
@@ -140,7 +140,7 @@ broadcast_state(Socket, UsersLoggedIn, UsersLimited) ->
 start_rcv(IP_Port_Pairs) ->
 	{ok, Socket} = chumak:socket(sub),
 	chumak:subscribe(Socket, ""), % subscribe everything
-	connect_list(Socket, IP_Port_Pairs),
+	zeromq_connect:connect_list(Socket, IP_Port_Pairs),
 	rcv_loop(Socket, whereis(?MODULE)).
 
 rcv_loop(Socket, StatePID) ->
@@ -149,25 +149,6 @@ rcv_loop(Socket, StatePID) ->
 	LimitedState = binary_to_term(EncodedLimitedState), % decodes from binary the limited users state
 	StatePID ! {merge, LoggedInState, LimitedState}, % sends to actor responsible for performing the merge
 	rcv_loop(Socket, StatePID).
-
-% -------- Auxiliary Methods --------
-
-%Given a ZeroMQ socket, connects to an endpoint.
-connect(Socket, IP, Port) ->
-	case chumak:connect(Socket, tcp, IP, Port) of
-		{ok, _BindPid} ->
-			ok; %io:format("Binding OK with Pid: ~p\n", [Socket]);
-		{error, Reason} ->
-			io:format("Connection Failed for this reason: ~p\n", [Reason]);
-		X ->
-			io:format("Unhandled reply for bind ~p \n", [X])
-	end.
-
-%Given a ZeroMQ socket, connects to a list of endpoints.
-connect_list(Socket, List_IP_Port_Pairs) ->
-	lists:foreach(fun({IP, Port}) -> connect(Socket, IP, Port) end, List_IP_Port_Pairs).
-
-
 
 %Comandos para correr no terminal
 %spawn(fun() -> users_state:start("R1", [{"localhost",5555}], [{"localhost",5556}]) end).
