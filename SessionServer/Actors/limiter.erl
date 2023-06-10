@@ -53,7 +53,6 @@ loop(LimitedList, TsFreeClient) ->
 						false ->
 							users_state:add(limited, Username),
 							NewLimitedList = LimitedList ++ [{Username, PID}],
-							%io:format("Added ~p. List: ~p~n", [{Username,PID}, NewLimitedList]), %TODO - Remove
 							loop(NewLimitedList, TsFreeClient);
 
 						% contains user in the list, so it is already set

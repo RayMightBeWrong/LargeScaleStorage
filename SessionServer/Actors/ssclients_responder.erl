@@ -70,7 +70,6 @@ handle_client_message(ClientS, ThrottleS, SessionS, Msg) ->
 		ToString = binary_to_list(Msg),
 		%removes new line at the end of the string
 		NoNewLine = string:substr(ToString, 1, length(ToString) - 1),
-		%io:format("Data: '~p'~n", [NoNewLine]), %TODO - tirar print
 		%Separates parts of the message by the delimiter
 		Tokens = string:tokens(NoNewLine," "),
 		LoggedIn = ClientS#client.logged_in, % to allow checks with 'when'
@@ -109,7 +108,6 @@ handle_client_message(ClientS, ThrottleS, SessionS, Msg) ->
 %% @param ThrottleS - Throttle state
 %% @param SessionS - Session state
 handle_request({login, Name}, ClientS, ThrottleS, SessionS) ->
-	io:format("User '~p' trying to log in!~n", [Name]), % TODO - remove print
 	% Asks the actor responsible for the users login/limited state, if
 	%  there is user logged in with the same username.
 	users_state:contains(login, Name),
@@ -166,15 +164,13 @@ handle_request({login, Name}, ClientS, ThrottleS, SessionS) ->
 %% @param SessionS - Session state
 handle_request(Request, ClientS, ThrottleS, SessionS) ->
 	case Request of
-		%TODO - fazer handle da request e enviar a resposta aqui
 		{read, Keys} ->
-			io:format("Handling Read~n"), %TODO - remover print
 			{NewCtx, Key_Value_Pairs} = data_interface:read(Keys, SessionS#session.context),
-			ToBinary = term_to_binary(list_to_string(Key_Value_Pairs)),
-			io:format("Resp: '~p'~n", [Key_Value_Pairs]),
+			String = list_to_string(Key_Value_Pairs),
+			ToBinary = list_to_binary(String),
+			io:format("Resp: '~p'~n", [String]),
 			gen_tcp:send(ClientS#client.csocket, <<ToBinary/binary, <<"\n">>/binary>>);
 		{write, Key, Value} ->
-			io:format("Handling Write~n"), %TODO - remover print
 			NewCtx = data_interface:put(Key, Value, SessionS#session.context),
 			gen_tcp:send(ClientS#client.csocket, <<"\n">>)
 	end,
