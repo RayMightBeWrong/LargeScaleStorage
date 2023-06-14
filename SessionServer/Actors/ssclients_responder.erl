@@ -165,8 +165,12 @@ handle_request({login, Name}, ClientS, ThrottleS, SessionS) ->
 handle_request(Request, ClientS, ThrottleS, SessionS) ->
 	case Request of
 		{read, Keys} ->
-			{NewCtx, Key_Value_Pairs} = data_interface:read(Keys, SessionS#session.context),
-			String = list_to_string(Key_Value_Pairs),
+			CacheRes = get_from_cache(Keys),
+			NewKeys = remove_cache_getted(CacheRes,Keys),
+			{NewCtx, Key_Value_Pairs} = data_interface:read(NewKeys, SessionS#session.context),
+			put_keys(Key_Value_Pairs),
+			New_key_value_pairs = CacheRes ++ Key_Value_Pairs,
+			String = list_to_string(New_key_value_pairs),
 			ToBinary = list_to_binary(String),
 			io:format("Resp: '~p'~n", [String]),
 			gen_tcp:send(ClientS#client.csocket, <<ToBinary/binary, <<"\n">>/binary>>);
@@ -184,6 +188,42 @@ handle_request(Request, ClientS, ThrottleS, SessionS) ->
 
 
 % --------- Auxiliar Functions ---------
+%% Get Keys from cache
+%% @param List of keys to get from cache
+%% @returns List of all the elements present in cache
+get_from_cache([]) -> [];
+get_from_cache([H | T ]) -> 
+	V = lru_cache_shared:get_wait(H),
+	case V of 
+		badkey -> [get_from_cache(T)];
+		_ -> [{H,V} | get_from_cache(T)]
+	end.
+
+%% remove the keys that were in cache
+%% @param List of key value pairs getted from cache
+%% @param list of keys requested by the client
+%% @returns list of keys that need to be getted from data_interface
+remove_cache_getted([] , LK) -> LK;
+remove_cache_getted([{Ck,Cv} | Ct], LK) ->
+	NewLk = rm_elem_list(Ck,LK),
+	remove_cache_getted(Ct,NewLk).
+
+%% Aux function to remove a key that was already getted from cache
+%% @param CK key getted from cache
+%% @param list of keys requested by the client
+%% @returns list of keys that are diferent from CK
+rm_elem_list(_,[]) -> [];
+rm_elem_list(Ck,[Ck | T]) -> [rm_elem_list(Ck,T)];
+rm_elem_list(Ck,[K | T]) -> [K| rm_elem_list(Ck,T)]. 
+
+%% put list of values getted from data_interface in cache
+%% @param List of key value pairs to put in cache
+%% @returns nothing 
+put_keys([]) -> ok;
+put_keys([ {K,V} | T]) -> put(K,V), put_keys(T).
+
+
+
 
 %% Converts list of string tuples to string.
 %% @param list of string tuples.
