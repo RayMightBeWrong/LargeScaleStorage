@@ -5,14 +5,15 @@ import org.zeromq.ZMsg;
 import org.zeromq.ZFrame;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class DataServer{
     private String id;
     private ZContext ctx;
     private ZMQ.Socket socket;
     private DataMap data;
-    //private Map<Integer, Integer> clock;
 
     public DataServer(List<String> ports, String id){
         try{
@@ -25,7 +26,6 @@ public class DataServer{
             socket.send("hello");
 
             this.data = new DataMap();
-            //this.clock = new HashMap<>();
         }
         catch(Exception e){
             e.printStackTrace();
@@ -37,10 +37,8 @@ public class DataServer{
     public void run(){
         while(true){
             try{
-                // TODO: receive noutra thread
                 ZMsg msg = ZMsg.recvMsg(socket);
-                // pop empty delimiter
-                msg.pop();
+                msg.pop();      // pop empty delimiter
                 ZFrame content = msg.pop();
 
                 System.out.println("received: " + content.toString() + "\n");
@@ -58,31 +56,71 @@ public class DataServer{
 
         if (dsm.getType().equals("write")){
             String request = dsm.getMessage();
-            String[] kv_pair = request.split(",");
-            if (kv_pair.length != 2)
-                throw new Exception("Key-value requested to be written is not a pair!");
-            int new_version = this.data.write(kv_pair[0], kv_pair[1]);
+            String[] k_v_deps = request.split(";");
+            if (k_v_deps.length != 3)
+                throw new Exception("Key-value write request with inproper format!");
 
-            DataServerMessage newMsg = new DataServerMessage(true, dsm.getFrom(), "write_ans", String.valueOf(new_version));
+            Map<String, Integer> deps = parseDeps(k_v_deps[2]);
+            int new_version = this.data.write(k_v_deps[0], k_v_deps[1], deps);
+
+            DataServerMessage newMsg = new DataServerMessage(true, dsm.getNodeID(), dsm.getClientID(), "write_ans", String.valueOf(new_version));
             this.socket.send(newMsg.constructMessage());
         }
 
         else if (dsm.getType().equals("read")){
             String request = dsm.getMessage();
-            String value = this.data.readOne(request);
+            Map<String, String> answer = this.data.readOne(request);
+            String res = request + ";" + answer.get("value") + ";" + answer.get("version") + ";" + answer.get("deps");
 
-            DataServerMessage newMsg = new DataServerMessage(true, dsm.getFrom(), "read_ans", value);
+            DataServerMessage newMsg = new DataServerMessage(true, dsm.getNodeID(), dsm.getClientID(), "read_ans", res);
             this.socket.send(newMsg.constructMessage());
         }
 
         else if (dsm.getType().equals("read_version")){
             String request = dsm.getMessage();
-            String[] k_version = request.split(",");
+            String[] k_version = request.split(";");
             String value = this.data.readVersion(k_version[0], k_version[1]);
+            String res = k_version[0] + ";" + value + ";" + k_version[1];
 
-            DataServerMessage newMsg = new DataServerMessage(true, dsm.getFrom(), "read_version_ans", value);
+            DataServerMessage newMsg = new DataServerMessage(true, dsm.getNodeID(), dsm.getClientID(), "read_version_ans", res);
             this.socket.send(newMsg.constructMessage());
         }
+    }
+
+    private Map<String, Integer> parseDeps(String deps) throws Exception{
+        Map<String, Integer> res = new HashMap<>();
+        
+        // remove brackets
+        StringBuilder info = new StringBuilder();
+        for(int i = 1; i < deps.length() - 1; i ++)
+            info.append(deps.charAt(i));
+        deps = info.toString();
+        
+        if (!deps.equals("")){
+            String[] elems = deps.split("/");
+            for (String s: elems){
+                String[] kv = parseDep(s);
+                res.put(kv[0], Integer.parseInt(kv[1]));
+            }
+        }
+        
+        return res;
+    }
+
+    private String[] parseDep(String dep) throws Exception{
+        // remove curly brackets
+        StringBuilder info = new StringBuilder();
+        for(int i = 1; i < dep.length() - 1; i ++)
+            info.append(dep.charAt(i));
+        dep = info.toString();
+        
+        String[] res = dep.split(",");
+        if (res.length != 2)
+            throw new Exception("Key-value write request with inproper format!");
+        // force exception if version isn't an integer
+        Integer.parseInt(res[1]);
+
+        return res;
     }
 
     public static void main(String[] args){

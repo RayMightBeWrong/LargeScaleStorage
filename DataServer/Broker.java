@@ -31,10 +31,8 @@ public class Broker {
                 ZMsg msg = ZMsg.recvMsg(socket);
                 ZFrame sender = msg.pop();
                 ZFrame content = msg.pop();
-
                 System.out.println("sender: " + sender.toString());
 
-                // TODO: do this in a thread
                 handleMessage(sender.toString(), content.toString());
                 System.out.println();
             }
@@ -70,27 +68,27 @@ public class Broker {
 
     public void handleInnerMessage(String sender, DataServerMessage dsm){
         if (dsm.getType().equals("read_ans")){
-            DataServerMessage newMsg = new DataServerMessage(false, "", "read_ans", dsm.getMessage());
-            sendMessage(dsm.getFrom(), newMsg);
+            DataServerMessage newMsg = new DataServerMessage(false, "", dsm.getClientID(), "read_ans", dsm.getMessage());
+            sendMessage(dsm.getNodeID(), newMsg);
         }
         else if (dsm.getType().equals("write_ans")){
-            DataServerMessage newMsg = new DataServerMessage(false, "", "write_ans", dsm.getMessage());
-            sendMessage(dsm.getFrom(), newMsg);
+            DataServerMessage newMsg = new DataServerMessage(false, "", dsm.getClientID(), "write_ans", dsm.getMessage());
+            sendMessage(dsm.getNodeID(), newMsg);
         }
         else if (dsm.getType().equals("read_version_ans")){
-            DataServerMessage newMsg = new DataServerMessage(false, "", "read_version_ans", dsm.getMessage());
-            sendMessage(dsm.getFrom(), newMsg);
+            DataServerMessage newMsg = new DataServerMessage(false, "", dsm.getClientID(), "read_version_ans", dsm.getMessage());
+            sendMessage(dsm.getNodeID(), newMsg);
         }
     }
 
     public void handleOuterMessage(String sender, DataServerMessage dsm) throws Exception {
         if (dsm.getType().equals("write")){
-            String[] kv_pair = dsm.getMessage().split(",");
-            if (kv_pair.length != 2)
-                throw new Exception("Key-value requested to be written is not a pair!");
-            String key = kv_pair[0];
-            DataServerMessage newMsg = new DataServerMessage(true, sender, "write", dsm.getMessage());
+            String[] k_v_deps = dsm.getMessage().split(";");
+            if (k_v_deps.length != 3)
+                throw new Exception("Key-value write request with inproper format!");
+            String key = k_v_deps[0];
 
+            DataServerMessage newMsg = new DataServerMessage(true, sender, dsm.getClientID(), "write", dsm.getMessage());
             int keyHash = key.hashCode();
             String to = getClosest(keyHash);
             sendMessage(to, newMsg);
@@ -100,34 +98,30 @@ public class Broker {
             String[] keys = request.split(";");
 
             for (String key: keys){
-                DataServerMessage newMsg = new DataServerMessage(true, sender, "read", key);
+                DataServerMessage newMsg = new DataServerMessage(true, sender, dsm.getClientID(), "read", key);
 
                 int keyHash = key.hashCode();
                 String to = getClosest(keyHash);
-                sendMessage(to, newMsg);  
+                sendMessage(to, newMsg);
             }
         }
         else if (dsm.getType().equals("read_version")){
             String request = dsm.getMessage();
             String[] keys = request.split(";");
 
-            for (String key: keys){
-                String[] k_version = key.split(",");
-                if (k_version.length == 2){
-                    DataServerMessage newMsg = new DataServerMessage(true, sender, "read_version", key);
-
-                    int keyHash = key.hashCode();
-                    String to = getClosest(keyHash);
-                    sendMessage(to, newMsg);
-                }
-                else
-                    throw new Exception("Key-version requested is not a pair!");
+            if (keys.length == 2){
+                DataServerMessage newMsg = new DataServerMessage(true, sender, dsm.getClientID(), "read_version", request);
+            
+                int keyHash = keys[0].hashCode();
+                String to = getClosest(keyHash);
+                sendMessage(to, newMsg);
             }
+            else
+                throw new Exception("Key-version requested is not a pair!");
         }
     }
 
     public void acceptNewNode(String id){
-        // TODO: maybe not put 0, could be 0 to initiate clock
         this.hashs.put(id, 0);
     }
 
