@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 public class DataServer{
     private String id;
@@ -125,10 +126,18 @@ public class DataServer{
 
     public static void main(String[] args){
         List<String> ports = new ArrayList<>();
-        for (int i = 0; i < args.length - 1; i++)
+        for (int i = 0; i < args.length; i++)
             ports.add(args[i]);
 
-        DataServer server = new DataServer(ports, args[args.length - 1]);
+        // generate random hash
+        Random rand = new Random();
+        int rand1 = rand.nextInt(Integer.MAX_VALUE);
+        double rand2 = rand.nextDouble();
+        if (rand2 > 0.5)
+            rand1 *= -1;
+        String id = String.valueOf(rand1);
+
+        DataServer server = new DataServer(ports, id);
         server.run();
     }
 }
