@@ -1,4 +1,7 @@
+import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -87,6 +90,105 @@ public class DataMap {
         }
     }
 
+    public String moveRequest(String myID, String otherID) throws Exception{
+        StringBuilder res = new StringBuilder();
+
+        List<Integer> toMove = keysToMove(myID, otherID);
+        int i = 0;
+        for (Integer hash: toMove){
+            Map<Integer, String> keyData = this.data.get(hash);
+            int j = 0;
+            for (Map.Entry<Integer, String> entry: keyData.entrySet()){
+                int version = entry.getKey();
+                String value = entry.getValue();
+                Map<Integer, Map<String, Integer>> keyDeps = this.deps.get(hash);
+                Map<String, Integer> versionDeps = keyDeps.get(version);
+                res.append(String.valueOf(hash) + ";");
+                res.append(String.valueOf(version) + ";");
+                res.append(value + ";");
+                res.append(buildDeps(versionDeps));
+
+                j++;
+                if (j == keyData.size() && i + 1 == toMove.size())
+                    ;
+                else
+                    res.append("@");
+            }
+
+            i++;
+        }
+
+        return res.toString();
+    }
+
+    public void addElem(int hash, int version, String value, Map<String, Integer> new_deps){
+        try{
+            this.lock.lock();
+
+            if (this.data.containsKey(hash)){
+                Map<Integer, String> values = this.data.get(hash);
+                values.put(version, value);
+                this.data.put(hash, values);
+
+                int currentRecent = this.mostRecent.get(hash);
+                if (version > currentRecent){
+                    this.mostRecent.put(hash, version);
+                }
+
+                Map<Integer, Map<String, Integer>> currentDeps = this.deps.get(hash);
+                currentDeps.put(version, new_deps);
+                this.deps.put(hash, currentDeps);
+            }
+            else{
+                Map<Integer, String> values = new HashMap<>();
+                values.put(version, value);
+                this.data.put(hash, values);
+
+                this.mostRecent.put(hash, version);
+
+                Map<Integer, Map<String, Integer>> currentDeps = new HashMap<>();
+                currentDeps.put(version, new_deps);
+                this.deps.put(hash, currentDeps);
+            }
+
+            for(Map.Entry<Integer, Integer> entry: this.mostRecent.entrySet()){
+                System.out.println("=== NEW KEY ===");
+                System.out.println("=== KEY: " + entry.getKey());
+                Map<Integer, String> keyData = this.data.get(entry.getKey());
+                for(Map.Entry<Integer, String> entry2: keyData.entrySet()){
+                    System.out.println("VERSION: " + entry2.getKey() + " | VALUE: " + entry2.getValue());
+                    Map<String, Integer> versionDeps = this.deps.get(entry.getKey()).get(entry2.getKey());
+                    for(Map.Entry<String, Integer> entry3: versionDeps.entrySet()){
+                        System.out.println(":DEP: KEY: " + entry3.getKey() + " | VERSION: " + entry3.getValue());
+                    }
+                }
+                System.out.println("=== MOST RECENT: " + entry.getValue());
+                System.out.println();
+            }
+        }
+        finally{
+            this.lock.unlock();
+        }
+    }
+
+    public List<Integer> keysToMove(String myID, String otherID) throws Exception{
+        List<Integer> res = new ArrayList<>();
+        Map<String, Integer> hashs = new HashMap<>();
+        hashs.put(myID, 1);
+        hashs.put(otherID, 2);
+
+        for (Map.Entry<Integer, Integer> entry: this.mostRecent.entrySet()){
+            int hash = entry.getKey();
+
+            String closest = getClosest(hash, hashs);
+            if (closest.equals(otherID))
+                res.add(hash);
+        }
+
+        return res;
+    } 
+
+
     private String buildDeps(Map<String, Integer> dependencies){
         StringBuilder sb = new StringBuilder("[");
     
@@ -101,5 +203,38 @@ public class DataMap {
         sb.append("]");
 
         return sb.toString();
+    }
+
+    private String getClosest(int hashcode, Map<String, Integer> hashs) throws Exception {
+        String res = "";
+        BigInteger res_diff = BigInteger.valueOf(Integer.MAX_VALUE);
+        res_diff = res_diff.add(res_diff);
+
+        // if the key's hashcode is smaller than all of the servers' hashcodes
+        boolean less = true;
+
+        for (Map.Entry<String, Integer> entry: hashs.entrySet()){
+            int nodeHash = Integer.parseInt(entry.getKey());
+            // hashcode - nodeHash
+            BigInteger diff = BigInteger.valueOf(hashcode).subtract(BigInteger.valueOf(nodeHash));
+            
+            if (less && diff.compareTo(BigInteger.valueOf(0)) > 0){
+                less = false;
+                res = entry.getKey();
+                res_diff = diff;
+            }
+            // if less is true => res_diff < 0
+            // if diff < res_diff then it is closer to the key's hashcode in the chord 
+            else if (less && diff.compareTo(res_diff) < 0){
+                res = entry.getKey();
+                res_diff = diff;
+            }
+            else if (less == false && diff.compareTo(BigInteger.valueOf(0)) >= 0 && diff.compareTo(res_diff) < 0){
+                res = entry.getKey();
+                res_diff = diff;
+            }
+        }
+
+        return res;
     }
 }

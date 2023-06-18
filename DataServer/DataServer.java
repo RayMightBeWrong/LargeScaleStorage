@@ -86,6 +86,29 @@ public class DataServer{
             DataServerMessage newMsg = new DataServerMessage(true, dsm.getNodeID(), dsm.getClientID(), "read_version_ans", res);
             this.socket.send(newMsg.constructMessage());
         }
+        else if (dsm.getType().equals("mv_request")){
+            String another_id = dsm.getMessage();
+            String res = this.data.moveRequest(this.id, another_id);
+            if (res.equals(""))
+                res = "null";            
+            DataServerMessage newMsg = new DataServerMessage(true, another_id, "", "mv_response", res);
+            this.socket.send(newMsg.constructMessage());
+        }
+        else if (dsm.getType().equals("mv_response")){
+            if (!dsm.getMessage().equals("null")){
+                String[] elems = dsm.getMessage().split("@");
+                for(String elem: elems){
+                    String[] components = elem.split(";");
+                    if (components.length == 4){
+                        int hash = Integer.parseInt(components[0]);
+                        int version = Integer.parseInt(components[1]);
+                        String value = components[2];
+                        Map<String, Integer> deps = parseDeps(components[3]);
+                        this.data.addElem(hash, version, value, deps);
+                    }
+                }
+            }
+        }
     }
 
     private Map<String, Integer> parseDeps(String deps) throws Exception{

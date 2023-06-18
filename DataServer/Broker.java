@@ -44,17 +44,11 @@ public class Broker {
     }
 
     public void handleMessage(String sender, String content) throws Exception {
-        if (content.equals("hello_session")){
-            // TODO: sync com outros proxies
-        }
-        else if (content.equals("hello")){
+        if (content.equals("hello")){
             acceptNewNode(sender.toString());
         }
         else{
             String[] command = content.split("!");
-            for (int i=0; i < command.length; i++)
-                System.out.println(i + ": " + command[i]);
-
             DataServerMessage dsm = new DataServerMessage(command);
 
             // handle messages from data servers
@@ -80,6 +74,10 @@ public class Broker {
             DataServerMessage newMsg = new DataServerMessage(false, "", dsm.getClientID(), "read_version_ans", dsm.getMessage());
             sendMessage(dsm.getNodeID(), newMsg);
         }
+        else if (dsm.getType().equals("mv_response")){
+            DataServerMessage newMsg = new DataServerMessage(true, dsm.getNodeID(), "", "mv_response", dsm.getMessage());
+            sendMessage(dsm.getNodeID(), newMsg);
+        }
     }
 
     public void handleOuterMessage(String sender, DataServerMessage dsm) throws Exception {
@@ -92,7 +90,6 @@ public class Broker {
             DataServerMessage newMsg = new DataServerMessage(true, sender, dsm.getClientID(), "write", dsm.getMessage());
             int keyHash = key.hashCode();
             String to = getClosest(keyHash);
-            System.out.println("to: " + to);
             sendMessage(to, newMsg);
         }
         else if (dsm.getType().equals("read")){
@@ -123,7 +120,12 @@ public class Broker {
         }
     }
 
-    public void acceptNewNode(String id){
+    public void acceptNewNode(String id) throws Exception{
+        if (!this.hashs.isEmpty()){
+            String to = getClosest(Integer.parseInt(id));
+            DataServerMessage newMsg = new DataServerMessage(true, id, "", "mv_request", id);
+            sendMessage(to, newMsg);
+        }
         this.hashs.put(id, 0);
     }
 
