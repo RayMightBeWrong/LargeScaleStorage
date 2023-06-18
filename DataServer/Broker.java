@@ -1,3 +1,4 @@
+import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -91,6 +92,7 @@ public class Broker {
             DataServerMessage newMsg = new DataServerMessage(true, sender, dsm.getClientID(), "write", dsm.getMessage());
             int keyHash = key.hashCode();
             String to = getClosest(keyHash);
+            System.out.println("to: " + to);
             sendMessage(to, newMsg);
         }
         else if (dsm.getType().equals("read")){
@@ -127,26 +129,29 @@ public class Broker {
 
     private String getClosest(int hashcode) throws Exception {
         String res = "";
-        int res_diff = Integer.MIN_VALUE;
+        BigInteger res_diff = BigInteger.valueOf(Integer.MAX_VALUE);
+        res_diff = res_diff.add(res_diff);
+
         // if the key's hashcode is smaller than all of the servers' hashcodes
         boolean less = true;
 
         for (Map.Entry<String, Integer> entry: this.hashs.entrySet()){
             int nodeHash = Integer.parseInt(entry.getKey());
-            int diff = hashcode - nodeHash;
+            // hashcode - nodeHash
+            BigInteger diff = BigInteger.valueOf(hashcode).subtract(BigInteger.valueOf(nodeHash));
             
-            if (less && diff > 0){
+            if (less && diff.compareTo(BigInteger.valueOf(0)) > 0){
                 less = false;
                 res = entry.getKey();
                 res_diff = diff;
             }
             // if less is true => res_diff < 0
-            // if diff > res_diff then it is closer to the key's hashcode in the chord 
-            else if (less && diff > res_diff){
+            // if diff < res_diff then it is closer to the key's hashcode in the chord 
+            else if (less && diff.compareTo(res_diff) < 0){
                 res = entry.getKey();
                 res_diff = diff;
             }
-            else if (less == false && diff >= 0 && diff < res_diff){
+            else if (less == false && diff.compareTo(BigInteger.valueOf(0)) >= 0 && diff.compareTo(res_diff) < 0){
                 res = entry.getKey();
                 res_diff = diff;
             }
