@@ -1,0 +1,11 @@
+{application,chumak,
+             [{description,"Erlang implementation of ZeroMQ Transport Protocol (ZMTP)"},
+              {vsn,"1.4.0"},
+              {registered,[]},
+              {mod,{chumak,[]}},
+              {applications,[kernel,stdlib]},
+              {env,[]},
+              {modules,[]},
+              {maintainers,["Andriy Drozdyuk"]},
+              {licenses,["MPLv2"]},
+              {links,[{"Github","https://github.com/chovencorp/chumak"}]}]}.
