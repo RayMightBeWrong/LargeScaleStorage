@@ -125,7 +125,7 @@ create_deps_string_aux(Msg, [{Key, Version} | T]) ->
 receiver_loop(Socket) ->
     Res = chumak:recv_multipart(Socket),
     case Res of
-        {ok, [Frame]} ->
+        {ok, [_DelimFrame, Frame]} ->
             [_, PID, RespType, Response] = string:tokens(binary_to_list(Frame), "!"),
             case RespType of
                 % format of read_ans: 'OUTER!!id!read_ans!key;value;version;deps'
@@ -141,7 +141,8 @@ receiver_loop(Socket) ->
             receiver_loop(Socket);
 
         _ ->
-            io:format("Data Gateway unexpected behaviour at receiving!"),
+	    io:format("~p~n", [Res]),
+            io:format("Data Gateway unexpected behaviour at receiving! ~n"),
             receiver_loop(Socket)
     end.
 

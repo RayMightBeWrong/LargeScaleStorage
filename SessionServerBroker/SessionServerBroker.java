@@ -15,7 +15,6 @@ public class SessionServerBroker {
 
             while(true){
                 byte[] m = router.recv();
-                System.out.println(new String(m));
                 if (router.hasReceiveMore()) {
                     pub.sendMore(m);
                 } else {

@@ -73,12 +73,14 @@ public class InteractiveClient {
         Scanner sc = new Scanner(System.in);
         printBanner();
         System.out.println("-------------------  CONNECT TO SERVER  -------------------");
-        System.out.println("AT IP: ");
+        System.out.println("INSERT NAME: ");
+        String name = sc.nextLine();
+        System.out.println("\nAT IP: ");
         String ip = sc.nextLine();
         System.out.println("\nAT PORT: ");
         int port = sc.nextInt();
         System.out.println("\nCONNECTING TO " + this.sessionServerIP + ":" + this.port + "...");
-        connectToServer(ip, port);
+        connectToServer(name, ip, port);
     }
 
     public void read(){
@@ -108,12 +110,15 @@ public class InteractiveClient {
         writeToServer(key, value);
     }
 
-    public void connectToServer(String ip, int port) throws Exception{
+    public void connectToServer(String name, String ip, int port) throws Exception{
         this.sessionServerIP = ip;
         this.port = port;
         this.socket = new Socket(ip, port);
         this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         this.out = new PrintWriter(socket.getOutputStream(), true);
+        
+        out.println("login " + name);
+        out.flush();
     }
 
     public void readFromServer(List<String> keys){

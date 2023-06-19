@@ -72,6 +72,7 @@ handle_client_message(ClientS, ThrottleS, SessionS, Msg) ->
 		NoNewLine = string:substr(ToString, 1, length(ToString) - 1),
 		%Separates parts of the message by the delimiter
 		Tokens = string:tokens(NoNewLine," "),
+		io:format("Tokens: '~p'~n", [Tokens]),
 		LoggedIn = ClientS#client.logged_in, % to allow checks with 'when'
 		case Tokens of
 			%TODO - remover (é só para testes)
@@ -83,10 +84,10 @@ handle_client_message(ClientS, ThrottleS, SessionS, Msg) ->
 			%	inet:setopts(ClientS#client.csocket, [{active, once}]),
 			%	loop(ClientS, ThrottleS#throttle{circ_buffer = NewCB}, SessionS);
 			["login", Name] when LoggedIn == false ->
-				%io:format("Login: '~p'~n", [Name]),
+				io:format("Login: '~p'~n", [Name]),
 				handle_request({login, Name}, ClientS, ThrottleS, SessionS);
 			["read" | Keys] when LoggedIn == true ->
-				%io:format("Get: '~p'~n", [Keys]),
+				io:format("Get: '~p'~n", [Keys]),
 				handle_request({read, Keys}, ClientS, ThrottleS, SessionS);
 			["write", Key, Value] when LoggedIn == true ->
 				%io:format("Write: '~p' '~p'~n", [Key, Value]),
@@ -204,7 +205,7 @@ get_from_cache([H | T ]) ->
 %% @param list of keys requested by the client
 %% @returns list of keys that need to be getted from data_interface
 remove_cache_getted([] , LK) -> LK;
-remove_cache_getted([{Ck,Cv} | Ct], LK) ->
+remove_cache_getted([{Ck,_Cv} | Ct], LK) ->
 	NewLk = rm_elem_list(Ck,LK),
 	remove_cache_getted(Ct,NewLk).
 
