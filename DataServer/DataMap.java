@@ -31,6 +31,8 @@ public class DataMap {
                 res.put("version", String.valueOf(last_version));
                 res.put("deps", buildDeps(this.deps.get(hash).get(last_version)));
             }
+            else
+                res = null;
 
             return res;
         }
@@ -149,21 +151,6 @@ public class DataMap {
                 Map<Integer, Map<String, Integer>> currentDeps = new HashMap<>();
                 currentDeps.put(version, new_deps);
                 this.deps.put(hash, currentDeps);
-            }
-
-            for(Map.Entry<Integer, Integer> entry: this.mostRecent.entrySet()){
-                System.out.println("=== NEW KEY ===");
-                System.out.println("=== KEY: " + entry.getKey());
-                Map<Integer, String> keyData = this.data.get(entry.getKey());
-                for(Map.Entry<Integer, String> entry2: keyData.entrySet()){
-                    System.out.println("VERSION: " + entry2.getKey() + " | VALUE: " + entry2.getValue());
-                    Map<String, Integer> versionDeps = this.deps.get(entry.getKey()).get(entry2.getKey());
-                    for(Map.Entry<String, Integer> entry3: versionDeps.entrySet()){
-                        System.out.println(":DEP: KEY: " + entry3.getKey() + " | VERSION: " + entry3.getValue());
-                    }
-                }
-                System.out.println("=== MOST RECENT: " + entry.getValue());
-                System.out.println();
             }
         }
         finally{

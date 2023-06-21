@@ -37,11 +37,6 @@ public class InteractiveClient {
                         break;
 
                     case 3: 
-                        clearScreen();
-                        connect();
-                        break;
-
-                    case 4: 
                         option = -1;
                         break;
                 }
@@ -62,8 +57,7 @@ public class InteractiveClient {
         System.out.println("CHOOSE AN OPTION (1-4):");
         System.out.println("1. READ");
         System.out.println("2. WRITE");
-        System.out.println("3. CONNECT TO DIFFERENT SERVER");
-        System.out.println("4. EXIT");
+        System.out.println("3. EXIT");
         System.out.println("\nSELECT AN OPTION:");
         int option = sc.nextInt();
 

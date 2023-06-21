@@ -130,7 +130,8 @@ receiver_loop(Socket) ->
             case RespType of
                 % format of read_ans: 'OUTER!!id!read_ans!key;value;version;deps'
                 % example of deps: '[{1,0}/{2,3}]'
-                "read_ans" -> rcv_handle_read_ans(PID, Response);
+                "read_ans" -> 
+                    rcv_handle_read_ans(PID, Response);
 
                 % format of read_version_ans: 'OUTER!!id!read_version_ans!key;value;version'
                 "read_version_ans" -> rcv_handle_read_version_ans(PID, Response);

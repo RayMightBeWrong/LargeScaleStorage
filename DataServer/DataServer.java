@@ -71,7 +71,9 @@ public class DataServer{
         else if (dsm.getType().equals("read")){
             String request = dsm.getMessage();
             Map<String, String> answer = this.data.readOne(request);
-            String res = request + ";" + answer.get("value") + ";" + answer.get("version") + ";" + answer.get("deps");
+            String res = ";;; ";
+            if (answer != null)
+                res = request + ";" + answer.get("value") + ";" + answer.get("version") + ";" + answer.get("deps");
 
             DataServerMessage newMsg = new DataServerMessage(true, dsm.getNodeID(), dsm.getClientID(), "read_ans", res);
             this.socket.send(newMsg.constructMessage());
