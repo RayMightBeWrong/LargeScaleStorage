@@ -1,5 +1,6 @@
 import java.net.Socket;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -83,7 +84,7 @@ public class InteractiveClient {
         connectToServer(name, ip, port);
     }
 
-    public void read(){
+    public void read() throws IOException{
         Scanner sc = new Scanner(System.in);
         printBanner();
         System.out.println("------------------ READING FROM DATABASE ------------------");
@@ -96,10 +97,24 @@ public class InteractiveClient {
             String value = sc.next();
             keys.add(value);
         }
-        readFromServer(keys);
+        System.out.println();
+        
+        String answer = readFromServer(keys);
+        String[] kvs = answer.split(";");
+        System.out.println("RESPONSE:");
+        for (String kv: kvs){
+            String[] elems = kv.split(":");
+            System.out.println("{ key: " + elems[0] + " , value: " + elems[1] + " }");
+        }
+        System.out.println();
+
+        while(!answer.equals("y") && !answer.equals("Y")){
+            System.out.println("DO YOU WISH TO CONTINUE (y)?");
+            answer = sc.next();
+        }
     }
 
-    public void write(){
+    public void write() throws IOException{
         Scanner sc = new Scanner(System.in);
         printBanner();
         System.out.println("------------------- WRITING TO DATABASE -------------------");
@@ -108,6 +123,12 @@ public class InteractiveClient {
         System.out.println("\nVALUE: ");
         String value = sc.nextLine();
         writeToServer(key, value);
+        System.out.println("WAITING FOR A RESPONSE...");
+        String res;
+        while((res = in.readLine()) != null){
+            if (res.equals("write_ack"))
+                break;
+        }
     }
 
     public void connectToServer(String name, String ip, int port) throws Exception{
@@ -121,7 +142,7 @@ public class InteractiveClient {
         out.flush();
     }
 
-    public void readFromServer(List<String> keys){
+    public String readFromServer(List<String> keys) throws IOException{
         StringBuilder sb = new StringBuilder("read ");
         for (int i = 0; i < keys.size() - 1; i++){
             sb.append(keys.get(i));
@@ -131,6 +152,8 @@ public class InteractiveClient {
         sb.append("\n");
         out.write(sb.toString());
         out.flush();
+
+        return in.readLine();
     }
 
     public void writeToServer(String key, String value){

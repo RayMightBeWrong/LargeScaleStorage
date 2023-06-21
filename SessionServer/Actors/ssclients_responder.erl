@@ -72,7 +72,6 @@ handle_client_message(ClientS, ThrottleS, SessionS, Msg) ->
 		NoNewLine = string:substr(ToString, 1, length(ToString) - 1),
 		%Separates parts of the message by the delimiter
 		Tokens = string:tokens(NoNewLine," "),
-		io:format("Tokens: '~p'~n", [Tokens]),
 		LoggedIn = ClientS#client.logged_in, % to allow checks with 'when'
 		case Tokens of
 			%TODO - remover (é só para testes)
@@ -87,7 +86,7 @@ handle_client_message(ClientS, ThrottleS, SessionS, Msg) ->
 				io:format("Login: '~p'~n", [Name]),
 				handle_request({login, Name}, ClientS, ThrottleS, SessionS);
 			["read" | Keys] when LoggedIn == true ->
-				io:format("Get: '~p'~n", [Keys]),
+				%io:format("Get: '~p'~n", [Keys]),
 				handle_request({read, Keys}, ClientS, ThrottleS, SessionS);
 			["write", Key, Value] when LoggedIn == true ->
 				%io:format("Write: '~p' '~p'~n", [Key, Value]),
@@ -167,7 +166,7 @@ handle_request(Request, ClientS, ThrottleS, SessionS) ->
 	case Request of
 		{read, Keys} ->
 			CacheRes = get_from_cache(Keys),
-			NewKeys = remove_cache_getted(CacheRes,Keys),
+			NewKeys = remove_cache_getted(CacheRes, Keys),
 			{NewCtx, Key_Value_Pairs} = data_interface:read(NewKeys, SessionS#session.context),
 			put_keys(Key_Value_Pairs),
 			New_key_value_pairs = CacheRes ++ Key_Value_Pairs,
@@ -177,7 +176,9 @@ handle_request(Request, ClientS, ThrottleS, SessionS) ->
 			gen_tcp:send(ClientS#client.csocket, <<ToBinary/binary, <<"\n">>/binary>>);
 		{write, Key, Value} ->
 			NewCtx = data_interface:put(Key, Value, SessionS#session.context),
-			gen_tcp:send(ClientS#client.csocket, <<"\n">>)
+			String = "write_ack",
+			ToBinary = list_to_binary(String),
+			gen_tcp:send(ClientS#client.csocket, <<ToBinary/binary, <<"\n">>/binary>>)
 	end,
 	% Increments number of requests, and gets the approximate number of requests in the last minute
 	{NewCB, LastMinSum} = circular_buffers:inc_plus_sum(ThrottleS#throttle.circ_buffer),
@@ -196,7 +197,7 @@ get_from_cache([]) -> [];
 get_from_cache([H | T ]) -> 
 	V = lru_cache_shared:get_wait(H),
 	case V of 
-		badkey -> [get_from_cache(T)];
+		badkey -> get_from_cache(T);
 		_ -> [{H,V} | get_from_cache(T)]
 	end.
 
