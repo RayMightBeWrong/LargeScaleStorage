@@ -42,4 +42,4 @@ A aplicação de um cliente interativo inicia-se com: ```java InteractiveClient`
 ###### CLIENTE AUTOMÁTICO
 
 A aplicação de um cliente automatizado recebe como argumento: o IP do servidor de sessão, o port do servidor de sessão, o nome do cliente e o intervalo entre o fim de um pedido e o início de outro (em milissegundos).
-Para um cliente automatizado que se ligue ao servidor de sessão criada em cima e que envie pedidos com um intervalo de 1 segundo: ```java InteractiveClient localhost 12345 client 1000```
+Para um cliente automatizado que se ligue ao servidor de sessão criada em cima e que envie pedidos com um intervalo de 1 segundo: ```java RandomClient localhost 12345 client 1000```
