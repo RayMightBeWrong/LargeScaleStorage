@@ -18,7 +18,7 @@ Para ligar um servidor de dados a um broker de dados (à escuta na porta 7000), 
 
 ###### BROKER
 Dentro da diretoria SessionServerBroker, compilar os ficheiros do broker dos servidores de sessão com: ```./compile *.java```
-E pôe-se o servidor ativo com (p.ex. o ROUTER na porta 5555 e o PUB na porta 5556): ```./run Broker 5555 5556```
+E pôe-se o servidor ativo com (p.ex. o ROUTER na porta 5555 e o PUB na porta 5556): ```./run SessionServerBroker.java 5555 5556```
 
 ###### SERVIDORES DE SESSÃO
 Dentro da diretoria SessionServer, compilar os ficheiros dos servidores de sessão com: 
