@@ -1,5 +1,3 @@
-package zeromq.my_tests;
-
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
